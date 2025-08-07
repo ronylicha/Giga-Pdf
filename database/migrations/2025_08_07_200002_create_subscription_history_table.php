@@ -11,7 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('subscription_history', function (Blueprint $table) {
+        if (!Schema::hasTable('subscription_history')) {
+            Schema::create('subscription_history', function (Blueprint $table) {
             $table->id();
             $table->foreignId('tenant_id')->constrained()->onDelete('cascade');
             $table->string('old_plan')->nullable();
@@ -29,6 +30,7 @@ return new class extends Migration
             $table->index(['tenant_id', 'created_at']);
             $table->index('status');
         });
+        }
     }
 
     /**

@@ -12,9 +12,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->boolean('is_suspended')->default(false)->after('subscription_expires_at');
-            $table->timestamp('suspended_at')->nullable()->after('is_suspended');
-            $table->text('suspended_reason')->nullable()->after('suspended_at');
+            if (!Schema::hasColumn('tenants', 'is_suspended')) {
+                $table->boolean('is_suspended')->default(false)->after('subscription_expires_at');
+            }
+            if (!Schema::hasColumn('tenants', 'suspended_at')) {
+                $table->timestamp('suspended_at')->nullable()->after('is_suspended');
+            }
+            if (!Schema::hasColumn('tenants', 'suspended_reason')) {
+                $table->text('suspended_reason')->nullable()->after('suspended_at');
+            }
         });
     }
 

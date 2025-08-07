@@ -178,6 +178,14 @@ class Tenant extends Model
     }
     
     /**
+     * Alias for getStorageUsage() for compatibility
+     */
+    public function getStorageUsed(): int
+    {
+        return $this->getStorageUsage();
+    }
+    
+    /**
      * Get storage usage percentage
      */
     public function getStorageUsagePercentage(): float

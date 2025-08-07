@@ -26,6 +26,9 @@ class Tenant extends Model
         'subscription_plan',
         'subscription_expires_at',
         'is_active',
+        'is_suspended',
+        'suspended_at',
+        'suspended_reason',
     ];
     
     /**
@@ -36,6 +39,8 @@ class Tenant extends Model
         'features' => 'array',
         'subscription_expires_at' => 'datetime',
         'is_active' => 'boolean',
+        'is_suspended' => 'boolean',
+        'suspended_at' => 'datetime',
         'max_storage_gb' => 'integer',
         'max_users' => 'integer',
         'max_file_size_mb' => 'integer',
@@ -112,6 +117,14 @@ class Tenant extends Model
     public function activityLogs(): HasMany
     {
         return $this->hasMany(ActivityLog::class);
+    }
+    
+    /**
+     * Get invitations relationship
+     */
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(Invitation::class);
     }
     
     /**

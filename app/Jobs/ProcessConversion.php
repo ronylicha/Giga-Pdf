@@ -51,16 +51,21 @@ class ProcessConversion implements ShouldQueue
                 $this->conversion->options ?? []
             );
             
+            // Move converted file to proper location first
+            $storedName = 'conversions/' . $this->conversion->tenant_id . '/' . basename($outputPath);
+            Storage::put($storedName, file_get_contents($outputPath));
+            
             // Create result document
             $resultDocument = Document::create([
                 'tenant_id' => $this->conversion->tenant_id,
                 'user_id' => $this->conversion->user_id,
                 'parent_id' => $sourceDocument->id,
                 'original_name' => pathinfo($sourceDocument->original_name, PATHINFO_FILENAME) . '.' . $this->conversion->to_format,
-                'stored_name' => 'conversions/' . $this->conversion->tenant_id . '/' . basename($outputPath),
+                'stored_name' => $storedName,
                 'mime_type' => $this->getMimeType($this->conversion->to_format),
                 'size' => filesize($outputPath),
                 'extension' => $this->conversion->to_format,
+                'hash' => hash_file('sha256', $outputPath),
                 'metadata' => [
                     'converted_from' => $sourceDocument->id,
                     'conversion_id' => $this->conversion->id,
@@ -68,8 +73,6 @@ class ProcessConversion implements ShouldQueue
                 ],
             ]);
             
-            // Move converted file to proper location
-            Storage::put($resultDocument->stored_name, file_get_contents($outputPath));
             unlink($outputPath); // Remove temp file
             
             // Update conversion record

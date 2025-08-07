@@ -39,6 +39,142 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     Dashboard
                                 </NavLink>
+                                
+                                <!-- Documents Menu -->
+                                <Dropdown align="left" width="48">
+                                    <template #trigger>
+                                        <span class="inline-flex">
+                                            <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
+                                                Documents
+                                                <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                                </svg>
+                                            </button>
+                                        </span>
+                                    </template>
+
+                                    <template #content>
+                                        <DropdownLink :href="route('documents.index')">
+                                            Mes Documents
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('documents.create')">
+                                            Télécharger
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('conversions.index')">
+                                            Conversions
+                                        </DropdownLink>
+                                    </template>
+                                </Dropdown>
+                                
+                                <!-- Outils PDF Menu -->
+                                <Dropdown align="left" width="48">
+                                    <template #trigger>
+                                        <span class="inline-flex">
+                                            <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
+                                                Outils PDF
+                                                <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                                </svg>
+                                            </button>
+                                        </span>
+                                    </template>
+
+                                    <template #content>
+                                        <DropdownLink :href="route('tools.merge')">
+                                            Fusionner PDF
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tools.split')">
+                                            Diviser PDF
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tools.rotate')">
+                                            Rotation
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tools.compress')">
+                                            Compresser
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tools.watermark')">
+                                            Filigrane
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tools.encrypt')">
+                                            Chiffrer PDF
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tools.ocr')">
+                                            OCR (Texte)
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tools.extract')">
+                                            Extraire Pages
+                                        </DropdownLink>
+                                    </template>
+                                </Dropdown>
+                                
+                                <!-- Administration Menu (conditionally shown for admins) -->
+                                <Dropdown v-if="$page.props.auth.user.is_tenant_admin || $page.props.auth.user.is_super_admin" align="left" width="48">
+                                    <template #trigger>
+                                        <span class="inline-flex">
+                                            <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
+                                                Administration
+                                                <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                                </svg>
+                                            </button>
+                                        </span>
+                                    </template>
+
+                                    <template #content>
+                                        <!-- Tenant Admin Routes -->
+                                        <template v-if="$page.props.auth.user.is_tenant_admin">
+                                            <DropdownLink :href="route('admin.dashboard')">
+                                                Tableau de bord
+                                            </DropdownLink>
+                                            
+                                            <DropdownLink :href="route('admin.users.index')">
+                                                Utilisateurs
+                                            </DropdownLink>
+                                            
+                                            <DropdownLink :href="route('admin.settings')">
+                                                Paramètres
+                                            </DropdownLink>
+                                            
+                                            <DropdownLink :href="route('admin.activity')">
+                                                Journal d'activité
+                                            </DropdownLink>
+                                            
+                                            <DropdownLink :href="route('admin.storage')">
+                                                Gestion stockage
+                                            </DropdownLink>
+                                        </template>
+                                        
+                                        <!-- Super Admin Routes -->
+                                        <template v-if="$page.props.auth.user.is_super_admin">
+                                            <div class="border-t border-gray-100 dark:border-gray-600"></div>
+                                            
+                                            <DropdownLink :href="route('super-admin.dashboard')">
+                                                Super Admin
+                                            </DropdownLink>
+                                            
+                                            <DropdownLink :href="route('super-admin.tenants.index')">
+                                                Gestion Tenants
+                                            </DropdownLink>
+                                            
+                                            <DropdownLink :href="route('super-admin.users.index')">
+                                                Tous les utilisateurs
+                                            </DropdownLink>
+                                            
+                                            <DropdownLink :href="route('super-admin.system')">
+                                                Système
+                                            </DropdownLink>
+                                        </template>
+                                    </template>
+                                </Dropdown>
                             </div>
                         </div>
 
@@ -52,7 +188,15 @@ const showingNavigationDropdown = ref(false);
                                                 type="button"
                                                 class="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
                                             >
-                                                {{ $page.props.auth.user.name }}
+                                                <div class="flex items-center">
+                                                    {{ $page.props.auth.user.name }}
+                                                    <span v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.length > 0" class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full dark:bg-blue-800 dark:text-blue-200">
+                                                        {{ $page.props.auth.user.roles.join(', ') }}
+                                                    </span>
+                                                    <span v-else-if="$page.props.auth.user.role" class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full dark:bg-blue-800 dark:text-blue-200">
+                                                        {{ $page.props.auth.user.role }}
+                                                    </span>
+                                                </div>
 
                                                 <svg
                                                     class="-me-0.5 ms-2 h-4 w-4"
@@ -146,6 +290,53 @@ const showingNavigationDropdown = ref(false);
                         >
                             Dashboard
                         </ResponsiveNavLink>
+                        
+                        <ResponsiveNavLink :href="route('documents.index')">
+                            Mes Documents
+                        </ResponsiveNavLink>
+                        
+                        <ResponsiveNavLink :href="route('documents.create')">
+                            Télécharger
+                        </ResponsiveNavLink>
+                        
+                        <ResponsiveNavLink :href="route('conversions.index')">
+                            Conversions
+                        </ResponsiveNavLink>
+                    </div>
+                    
+                    <!-- PDF Tools Section -->
+                    <div class="border-t border-gray-200 dark:border-gray-600 pt-2 pb-2">
+                        <div class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Outils PDF</div>
+                        <ResponsiveNavLink :href="route('tools.merge')">Fusionner PDF</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.split')">Diviser PDF</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.rotate')">Rotation</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.compress')">Compresser</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.watermark')">Filigrane</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.encrypt')">Chiffrer PDF</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.ocr')">OCR (Texte)</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.extract')">Extraire Pages</ResponsiveNavLink>
+                    </div>
+                    
+                    <!-- Administration Section -->
+                    <div v-if="$page.props.auth.user.is_tenant_admin || $page.props.auth.user.is_super_admin" class="border-t border-gray-200 dark:border-gray-600 pt-2 pb-2">
+                        <div class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Administration</div>
+                        
+                        <!-- Tenant Admin Links -->
+                        <template v-if="$page.props.auth.user.is_tenant_admin">
+                            <ResponsiveNavLink :href="route('admin.dashboard')">Tableau de bord</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.users.index')">Utilisateurs</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.settings')">Paramètres</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.activity')">Journal d'activité</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.storage')">Gestion stockage</ResponsiveNavLink>
+                        </template>
+                        
+                        <!-- Super Admin Links -->
+                        <template v-if="$page.props.auth.user.is_super_admin">
+                            <ResponsiveNavLink :href="route('super-admin.dashboard')">Super Admin</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('super-admin.tenants.index')">Gestion Tenants</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('super-admin.users.index')">Tous les utilisateurs</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('super-admin.system')">Système</ResponsiveNavLink>
+                        </template>
                     </div>
 
                     <!-- Responsive Settings Options -->
@@ -157,6 +348,12 @@ const showingNavigationDropdown = ref(false);
                                 class="text-base font-medium text-gray-800 dark:text-gray-200"
                             >
                                 {{ $page.props.auth.user.name }}
+                                <div v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.length > 0" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Rôle(s): {{ $page.props.auth.user.roles.join(', ') }}
+                                </div>
+                                <div v-else-if="$page.props.auth.user.role" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Rôle: {{ $page.props.auth.user.role }}
+                                </div>
                             </div>
                             <div class="text-sm font-medium text-gray-500">
                                 {{ $page.props.auth.user.email }}

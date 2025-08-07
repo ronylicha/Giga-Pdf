@@ -58,12 +58,15 @@ class ConversionController extends Controller
         $validated = $request->validate([
             'document_id' => 'required_without:file|exists:documents,id',
             'file' => 'required_without:document_id|file|max:102400', // 100MB max
-            'output_format' => 'required|string|in:pdf,docx,xlsx,pptx,jpg,png,html,txt,md',
+            'output_format' => 'required|string|in:pdf,docx,doc,xlsx,xls,pptx,ppt,jpg,jpeg,png,gif,bmp,tiff,html,txt,md,word,excel,powerpoint,image,text,markdown',
             'options' => 'nullable|json',
         ]);
         
         $user = auth()->user();
         $tenant = $user->tenant;
+        
+        // Map format names to actual extensions
+        $outputFormat = $this->mapFormatToExtension($validated['output_format']);
         
         try {
             DB::beginTransaction();
@@ -98,7 +101,7 @@ class ConversionController extends Controller
                 'user_id' => $user->id,
                 'document_id' => $document->id,
                 'from_format' => $document->extension,
-                'to_format' => $validated['output_format'],
+                'to_format' => $outputFormat,
                 'status' => 'pending',
                 'options' => json_decode($validated['options'] ?? '{}', true),
             ]);
@@ -182,5 +185,21 @@ class ConversionController extends Controller
         
         return redirect()->route('conversions.index')
             ->with('success', 'Conversion supprimée avec succès');
+    }
+    
+    /**
+     * Map format names to actual file extensions
+     */
+    protected function mapFormatToExtension(string $format): string
+    {
+        return match($format) {
+            'word' => 'docx',
+            'excel' => 'xlsx', 
+            'powerpoint' => 'pptx',
+            'image' => 'jpg',
+            'text' => 'txt',
+            'markdown' => 'md',
+            default => $format
+        };
     }
 }

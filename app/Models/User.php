@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -200,11 +202,240 @@ class User extends Authenticatable implements MustVerifyEmail
     }
     
     /**
+     * Get the roles relationship
+     */
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'user_roles')
+            ->withPivot('tenant_id', 'assigned_at', 'assigned_by')
+            ->withTimestamps();
+    }
+    
+    /**
+     * Get the primary role for the current tenant
+     */
+    public function role(): ?Role
+    {
+        $roleId = Cache::remember("user_{$this->id}_role_{$this->tenant_id}", 3600, function () {
+            return $this->roles()
+                ->wherePivot('tenant_id', $this->tenant_id)
+                ->orderBy('level')
+                ->first();
+        });
+        
+        return $roleId;
+    }
+    
+    /**
+     * Assign a role to the user
+     */
+    public function assignRole(Role|string $role, ?int $tenantId = null): void
+    {
+        if (is_string($role)) {
+            $role = Role::where('slug', $role)
+                ->where(function ($q) use ($tenantId) {
+                    $q->where('tenant_id', $tenantId)
+                      ->orWhereNull('tenant_id');
+                })
+                ->firstOrFail();
+        }
+        
+        // For super admin role, always use null tenant_id
+        if ($role->slug === Role::SUPER_ADMIN) {
+            $tenantId = null;
+        } else {
+            $tenantId = $tenantId ?? $this->tenant_id;
+        }
+        
+        $this->roles()->attach($role->id, [
+            'tenant_id' => $tenantId,
+            'assigned_at' => now(),
+            'assigned_by' => auth()->id(),
+        ]);
+        
+        $this->clearPermissionCache();
+    }
+    
+    /**
+     * Remove a role from the user
+     */
+    public function removeRole(Role|string $role, ?int $tenantId = null): void
+    {
+        if (is_string($role)) {
+            $role = Role::where('slug', $role)->first();
+            if (!$role) return;
+        }
+        
+        $this->roles()->wherePivot('tenant_id', $tenantId ?? $this->tenant_id)
+            ->detach($role->id);
+        
+        $this->clearPermissionCache();
+    }
+    
+    /**
+     * Sync roles for the user
+     */
+    public function syncRoles(array $roleIds, ?int $tenantId = null): void
+    {
+        $tenantId = $tenantId ?? $this->tenant_id;
+        
+        // Remove existing roles for this tenant
+        $this->roles()->wherePivot('tenant_id', $tenantId)->detach();
+        
+        // Attach new roles
+        foreach ($roleIds as $roleId) {
+            $this->roles()->attach($roleId, [
+                'tenant_id' => $tenantId,
+                'assigned_at' => now(),
+                'assigned_by' => auth()->id(),
+            ]);
+        }
+        
+        $this->clearPermissionCache();
+    }
+    
+    /**
+     * Check if user has a specific role
+     */
+    public function hasRole(string $roleSlug, ?int $tenantId = null): bool
+    {
+        // For super admin, check with null tenant_id
+        if ($roleSlug === Role::SUPER_ADMIN) {
+            return Cache::remember("user_{$this->id}_has_role_{$roleSlug}_null", 3600, function () use ($roleSlug) {
+                return $this->roles()
+                    ->where('slug', $roleSlug)
+                    ->wherePivot('tenant_id', null)
+                    ->exists();
+            });
+        }
+        
+        $tenantId = $tenantId ?? $this->tenant_id;
+        
+        return Cache::remember("user_{$this->id}_has_role_{$roleSlug}_{$tenantId}", 3600, function () use ($roleSlug, $tenantId) {
+            return $this->roles()
+                ->where('slug', $roleSlug)
+                ->wherePivot('tenant_id', $tenantId)
+                ->exists();
+        });
+    }
+    
+    /**
+     * Check if user has any of the given roles
+     */
+    public function hasAnyRole(array $roles, ?int $tenantId = null): bool
+    {
+        foreach ($roles as $role) {
+            if ($this->hasRole($role, $tenantId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Check if user has all of the given roles
+     */
+    public function hasAllRoles(array $roles, ?int $tenantId = null): bool
+    {
+        foreach ($roles as $role) {
+            if (!$this->hasRole($role, $tenantId)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /**
+     * Check if user has a specific permission
+     */
+    public function hasPermission(string $permission, ?int $tenantId = null): bool
+    {
+        $tenantId = $tenantId ?? $this->tenant_id;
+        
+        return Cache::remember("user_{$this->id}_permission_{$permission}_{$tenantId}", 3600, function () use ($permission, $tenantId) {
+            $roles = $this->roles()->wherePivot('tenant_id', $tenantId)->get();
+            
+            foreach ($roles as $role) {
+                if ($role->hasPermission($permission)) {
+                    return true;
+                }
+            }
+            
+            return false;
+        });
+    }
+    
+    /**
+     * Check if user has any of the given permissions
+     */
+    public function hasAnyPermission(array $permissions, ?int $tenantId = null): bool
+    {
+        foreach ($permissions as $permission) {
+            if ($this->hasPermission($permission, $tenantId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Check if user has all of the given permissions
+     */
+    public function hasAllPermissions(array $permissions, ?int $tenantId = null): bool
+    {
+        foreach ($permissions as $permission) {
+            if (!$this->hasPermission($permission, $tenantId)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /**
+     * Get all permissions for the user
+     */
+    public function getPermissions(?int $tenantId = null): array
+    {
+        $tenantId = $tenantId ?? $this->tenant_id;
+        
+        return Cache::remember("user_{$this->id}_all_permissions_{$tenantId}", 3600, function () use ($tenantId) {
+            $permissions = [];
+            $roles = $this->roles()->wherePivot('tenant_id', $tenantId)->get();
+            
+            foreach ($roles as $role) {
+                $permissions = array_merge($permissions, $role->permissions ?? []);
+            }
+            
+            return array_unique($permissions);
+        });
+    }
+    
+    /**
+     * Clear permission cache for the user
+     */
+    public function clearPermissionCache(): void
+    {
+        Cache::forget("user_{$this->id}_role_{$this->tenant_id}");
+        
+        // Clear all permission caches for this user
+        $patterns = [
+            "user_{$this->id}_has_role_*",
+            "user_{$this->id}_permission_*",
+            "user_{$this->id}_all_permissions_*",
+        ];
+        
+        foreach ($patterns as $pattern) {
+            // Note: This requires a cache driver that supports pattern deletion
+            // For Redis, you might need to use Cache::getRedis()->keys() and delete
+        }
+    }
+    
+    /**
      * Check if user is a super admin
      */
     public function isSuperAdmin(): bool
     {
-        return $this->email === config('app.super_admin_email', 'admin@giga-pdf.com');
+        return $this->hasRole(Role::SUPER_ADMIN);
     }
     
     /**
@@ -212,8 +443,17 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function isTenantAdmin(): bool
     {
-        // TODO: Implémenter avec le système de rôles
-        return $this->role_id === 1;
+        // Check for generic tenant_admin or tenant-specific role
+        if ($this->hasRole(Role::TENANT_ADMIN)) {
+            return true;
+        }
+        
+        // Check for tenant-specific role
+        if ($this->tenant_id) {
+            return $this->hasRole(Role::TENANT_ADMIN . '_' . $this->tenant_id);
+        }
+        
+        return false;
     }
     
     /**
@@ -222,6 +462,37 @@ class User extends Authenticatable implements MustVerifyEmail
     public function canAccessTenant(Tenant $tenant): bool
     {
         return $this->tenant_id === $tenant->id || $this->isSuperAdmin();
+    }
+    
+    /**
+     * Check if user can manage another user
+     */
+    public function canManageUser(User $targetUser): bool
+    {
+        // Super admin can manage all users
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+        
+        // Must be in same tenant
+        if ($this->tenant_id !== $targetUser->tenant_id) {
+            return false;
+        }
+        
+        // Check if user has permission to manage users
+        if (!$this->hasPermission('users.update')) {
+            return false;
+        }
+        
+        // Check role hierarchy
+        $userRole = $this->role();
+        $targetRole = $targetUser->role();
+        
+        if ($userRole && $targetRole) {
+            return $userRole->canManage($targetRole);
+        }
+        
+        return false;
     }
     
     /**

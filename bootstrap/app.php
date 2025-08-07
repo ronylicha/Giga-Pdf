@@ -21,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
             '2fa' => \App\Http\Middleware\Require2FA::class,
             'tenant' => \App\Http\Middleware\EnsureTenantSelected::class,
             'storage.quota' => \App\Http\Middleware\CheckStorageQuota::class,
+            'role' => \App\Http\Middleware\CheckRole::class,
+            'permission' => \App\Http\Middleware\CheckPermission::class,
+            'super.admin' => \App\Http\Middleware\SuperAdminOnly::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

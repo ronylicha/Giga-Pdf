@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\ConversionController;
+use App\Http\Controllers\PDFToolsController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ShareController;
+use App\Http\Controllers\RoleController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -92,6 +94,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{conversion}/retry', [ConversionController::class, 'retry'])->name('retry');
         });
         
+        // PDF Tools
+        Route::prefix('tools')->name('tools.')->group(function () {
+            Route::get('/merge', [PDFToolsController::class, 'merge'])->name('merge');
+            Route::get('/split', [PDFToolsController::class, 'split'])->name('split');
+            Route::get('/rotate', [PDFToolsController::class, 'rotate'])->name('rotate');
+            Route::get('/compress', [PDFToolsController::class, 'compress'])->name('compress');
+            Route::get('/watermark', [PDFToolsController::class, 'watermark'])->name('watermark');
+            Route::get('/encrypt', [PDFToolsController::class, 'encrypt'])->name('encrypt');
+            Route::get('/ocr', [PDFToolsController::class, 'ocr'])->name('ocr');
+            Route::get('/extract', [PDFToolsController::class, 'extract'])->name('extract');
+        });
+        
         // Tenant admin routes
         Route::middleware(['role:tenant_admin'])->prefix('tenant')->name('tenant.')->group(function () {
             // User management within tenant
@@ -119,6 +133,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
             // Storage management
             Route::get('/storage', [AdminDashboardController::class, 'storage'])->name('storage');
             Route::post('/storage/cleanup', [AdminDashboardController::class, 'cleanupStorage'])->name('storage.cleanup');
+            
+            // Roles management
+            Route::resource('roles', RoleController::class);
+            Route::get('/roles/{role}/users', [RoleController::class, 'users'])->name('roles.users');
+            Route::post('/roles/{role}/assign-users', [RoleController::class, 'assignUsers'])->name('roles.assign-users');
+            Route::delete('/roles/{role}/users/{user}', [RoleController::class, 'removeUser'])->name('roles.remove-user');
         });
         
         // Admin routes (keeping for backwards compatibility)

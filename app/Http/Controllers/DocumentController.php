@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Document;
+use App\Models\Share;
+use App\Models\User;
 use App\Services\StorageService;
 use App\Services\ConversionService;
 use App\Services\ImagickService;
@@ -10,6 +12,8 @@ use App\Http\Requests\UploadDocumentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Exception;
 
@@ -241,6 +245,47 @@ class DocumentController extends Controller
     }
     
     /**
+     * Show document editor
+     */
+    public function edit(Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        return Inertia::render('Documents/Editor', [
+            'document' => $document->load('user'),
+        ]);
+    }
+    
+    /**
+     * Preview document in browser
+     */
+    public function preview(Document $document)
+    {
+        $this->authorize('view', $document);
+        
+        $path = Storage::path($document->stored_name);
+        
+        // For PDFs, serve directly
+        if ($document->mime_type === 'application/pdf') {
+            return response()->file($path, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
+            ]);
+        }
+        
+        // For images
+        if (str_starts_with($document->mime_type, 'image/')) {
+            return response()->file($path, [
+                'Content-Type' => $document->mime_type,
+                'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
+            ]);
+        }
+        
+        // For other files, try to convert to PDF for preview
+        return redirect()->route('documents.download', $document);
+    }
+    
+    /**
      * Display document details
      */
     public function show(Document $document)
@@ -274,13 +319,113 @@ class DocumentController extends Controller
     }
     
     /**
+     * Update document (save annotations from editor)
+     */
+    public function update(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        $validated = $request->validate([
+            'annotations' => 'nullable|array',
+            'original_name' => 'nullable|string|max:255',
+            'tags' => 'nullable|array',
+        ]);
+        
+        if (isset($validated['annotations'])) {
+            $document->metadata = array_merge($document->metadata ?? [], [
+                'annotations' => $validated['annotations'],
+                'last_edited' => now()->toIso8601String(),
+                'edited_by' => auth()->id(),
+            ]);
+        }
+        
+        if (isset($validated['original_name'])) {
+            $document->original_name = $validated['original_name'];
+        }
+        
+        if (isset($validated['tags'])) {
+            $document->tags = $validated['tags'];
+        }
+        
+        $document->save();
+        
+        return back()->with('success', 'Document mis à jour avec succès.');
+    }
+    
+    /**
+     * Share document
+     */
+    public function share(Request $request, Document $document)
+    {
+        $this->authorize('share', $document);
+        
+        $validated = $request->validate([
+            'type' => 'required|in:public,password,user',
+            'password' => 'nullable|string|min:6|required_if:type,password',
+            'expires_at' => 'nullable|date|after:now',
+            'permissions' => 'nullable|array',
+            'user_email' => 'nullable|email|required_if:type,user',
+        ]);
+        
+        $share = Share::create([
+            'document_id' => $document->id,
+            'shared_by' => auth()->id(),
+            'type' => $validated['type'],
+            'token' => Str::random(32),
+            'password' => $validated['password'] ? Hash::make($validated['password']) : null,
+            'expires_at' => $validated['expires_at'] ?? null,
+            'permissions' => $validated['permissions'] ?? ['view', 'download'],
+        ]);
+        
+        if ($validated['type'] === 'user' && $validated['user_email']) {
+            $recipient = User::where('email', $validated['user_email'])->first();
+            if ($recipient) {
+                $share->shared_with = $recipient->id;
+                $share->save();
+            }
+        }
+        
+        return response()->json([
+            'share' => $share,
+            'url' => route('share.show', $share->token),
+        ]);
+    }
+    
+    /**
+     * Delete document
+     */
+    public function destroy(Document $document)
+    {
+        $this->authorize('delete', $document);
+        
+        // Delete file from storage
+        Storage::delete($document->stored_name);
+        
+        // Delete thumbnail if exists
+        if ($document->thumbnail_path) {
+            Storage::delete($document->thumbnail_path);
+        }
+        
+        // Log deletion
+        activity()
+            ->performedOn($document)
+            ->causedBy(auth()->user())
+            ->log('Document deleted');
+        
+        $document->delete();
+        
+        return redirect()->route('documents.index')
+            ->with('success', 'Document supprimé avec succès.');
+    }
+    
+    /**
      * Download document
      */
     public function download(Document $document)
     {
         $this->authorize('download', $document);
         
-        $path = $this->storageService->getPath($document);
+        $path = Storage::path($document->stored_name);
         
         // Log download
         activity()

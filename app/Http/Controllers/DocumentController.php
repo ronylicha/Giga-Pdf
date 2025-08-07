@@ -34,7 +34,7 @@ class DocumentController extends Controller
         
         $this->middleware('auth');
         $this->middleware('tenant');
-        $this->middleware('storage.quota')->only(['store', 'update']);
+        $this->middleware('storage.quota')->only(['store', 'upload']);
     }
     
     /**
@@ -153,7 +153,21 @@ class DocumentController extends Controller
             // Generate thumbnail in background
             dispatch(new \App\Jobs\GenerateThumbnail($document));
             
+            // Index content for search
+            dispatch(new \App\Jobs\IndexDocumentContent($document));
+            
             DB::commit();
+            
+            // Log activity
+            activity()
+                ->performedOn($document)
+                ->causedBy($user)
+                ->withProperties([
+                    'original_name' => $document->original_name,
+                    'size' => $document->size,
+                    'mime_type' => $document->mime_type,
+                ])
+                ->log('Document uploaded');
             
             return response()->json([
                 'success' => true,
@@ -164,6 +178,11 @@ class DocumentController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
             
+            \Log::error('Document upload failed', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id(),
+            ]);
+            
             return response()->json([
                 'message' => 'Erreur lors du téléchargement: ' . $e->getMessage()
             ], 500);
@@ -171,7 +190,7 @@ class DocumentController extends Controller
     }
     
     /**
-     * Store uploaded document
+     * Store uploaded document (for form submission)
      */
     public function store(UploadDocumentRequest $request)
     {
@@ -188,6 +207,7 @@ class DocumentController extends Controller
                 'original_name' => $file->getClientOriginalName(),
                 'mime_type' => $file->getMimeType(),
                 'size' => $file->getSize(),
+                'extension' => strtolower($file->getClientOriginalExtension()),
                 'tags' => $request->tags ?? [],
                 'metadata' => [
                     'uploaded_at' => now()->toIso8601String(),
@@ -204,14 +224,14 @@ class DocumentController extends Controller
             ]);
             
             // Generate thumbnail
-            dispatch(new \App\Jobs\GenerateDocumentThumbnail($document));
+            dispatch(new \App\Jobs\GenerateThumbnail($document));
             
             // Index content for search
             dispatch(new \App\Jobs\IndexDocumentContent($document));
             
             // Auto-convert to PDF if requested
             if ($request->auto_convert_pdf && !$document->isPdf()) {
-                dispatch(new \App\Jobs\ProcessDocumentConversion($document, 'pdf'));
+                dispatch(new \App\Jobs\ProcessConversion($document, 'pdf'));
             }
             
             DB::commit();
@@ -228,7 +248,7 @@ class DocumentController extends Controller
                 ->log('Document uploaded');
             
             return redirect()->route('documents.show', $document)
-                ->with('success', 'Document uploaded successfully.');
+                ->with('success', 'Document téléchargé avec succès.');
             
         } catch (Exception $e) {
             DB::rollBack();
@@ -239,50 +259,9 @@ class DocumentController extends Controller
             ]);
             
             return back()
-                ->with('error', 'Failed to upload document: ' . $e->getMessage())
+                ->with('error', 'Échec du téléchargement: ' . $e->getMessage())
                 ->withInput();
         }
-    }
-    
-    /**
-     * Show document editor
-     */
-    public function edit(Document $document)
-    {
-        $this->authorize('update', $document);
-        
-        return Inertia::render('Documents/Editor', [
-            'document' => $document->load('user'),
-        ]);
-    }
-    
-    /**
-     * Preview document in browser
-     */
-    public function preview(Document $document)
-    {
-        $this->authorize('view', $document);
-        
-        $path = Storage::path($document->stored_name);
-        
-        // For PDFs, serve directly
-        if ($document->mime_type === 'application/pdf') {
-            return response()->file($path, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
-            ]);
-        }
-        
-        // For images
-        if (str_starts_with($document->mime_type, 'image/')) {
-            return response()->file($path, [
-                'Content-Type' => $document->mime_type,
-                'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
-            ]);
-        }
-        
-        // For other files, try to convert to PDF for preview
-        return redirect()->route('documents.download', $document);
     }
     
     /**
@@ -319,26 +298,54 @@ class DocumentController extends Controller
     }
     
     /**
-     * Update document (save annotations from editor)
+     * Show document editor
+     */
+    public function edit(Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        return Inertia::render('Documents/Editor', [
+            'document' => $document->load('user'),
+        ]);
+    }
+    
+    /**
+     * Preview document in browser
+     */
+    public function preview(Document $document)
+    {
+        $this->authorize('view', $document);
+        
+        $path = Storage::path($document->stored_name);
+        
+        // For PDFs and images, serve directly
+        if ($document->mime_type === 'application/pdf' || str_starts_with($document->mime_type, 'image/')) {
+            return response()->file($path, [
+                'Content-Type' => $document->mime_type,
+                'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
+                'Cache-Control' => 'public, max-age=3600',
+            ]);
+        }
+        
+        // For other files, redirect to show page
+        return redirect()->route('documents.show', $document);
+    }
+    
+    /**
+     * Update document (metadata and annotations)
      */
     public function update(Request $request, Document $document)
     {
         $this->authorize('update', $document);
         
         $validated = $request->validate([
-            'annotations' => 'nullable|array',
             'original_name' => 'nullable|string|max:255',
             'tags' => 'nullable|array',
+            'tags.*' => 'string|max:50',
+            'annotations' => 'nullable|array',
         ]);
         
-        if (isset($validated['annotations'])) {
-            $document->metadata = array_merge($document->metadata ?? [], [
-                'annotations' => $validated['annotations'],
-                'last_edited' => now()->toIso8601String(),
-                'edited_by' => auth()->id(),
-            ]);
-        }
-        
+        // Update basic fields
         if (isset($validated['original_name'])) {
             $document->original_name = $validated['original_name'];
         }
@@ -347,7 +354,23 @@ class DocumentController extends Controller
             $document->tags = $validated['tags'];
         }
         
+        // Update annotations in metadata
+        if (isset($validated['annotations'])) {
+            $document->metadata = array_merge($document->metadata ?? [], [
+                'annotations' => $validated['annotations'],
+                'last_edited' => now()->toIso8601String(),
+                'edited_by' => auth()->id(),
+            ]);
+        }
+        
         $document->save();
+        
+        // Log activity
+        activity()
+            ->performedOn($document)
+            ->causedBy(auth()->user())
+            ->withProperties($validated)
+            ->log('Document updated');
         
         return back()->with('success', 'Document mis à jour avec succès.');
     }
@@ -377,45 +400,29 @@ class DocumentController extends Controller
             'permissions' => $validated['permissions'] ?? ['view', 'download'],
         ]);
         
+        // If sharing with specific user
         if ($validated['type'] === 'user' && $validated['user_email']) {
             $recipient = User::where('email', $validated['user_email'])->first();
             if ($recipient) {
                 $share->shared_with = $recipient->id;
                 $share->save();
+                
+                // Send notification email
+                // Mail::to($recipient)->send(new DocumentShared($share));
             }
         }
+        
+        // Log activity
+        activity()
+            ->performedOn($document)
+            ->causedBy(auth()->user())
+            ->withProperties(['share_type' => $validated['type']])
+            ->log('Document shared');
         
         return response()->json([
             'share' => $share,
             'url' => route('share.show', $share->token),
         ]);
-    }
-    
-    /**
-     * Delete document
-     */
-    public function destroy(Document $document)
-    {
-        $this->authorize('delete', $document);
-        
-        // Delete file from storage
-        Storage::delete($document->stored_name);
-        
-        // Delete thumbnail if exists
-        if ($document->thumbnail_path) {
-            Storage::delete($document->thumbnail_path);
-        }
-        
-        // Log deletion
-        activity()
-            ->performedOn($document)
-            ->causedBy(auth()->user())
-            ->log('Document deleted');
-        
-        $document->delete();
-        
-        return redirect()->route('documents.index')
-            ->with('success', 'Document supprimé avec succès.');
     }
     
     /**
@@ -439,65 +446,6 @@ class DocumentController extends Controller
     }
     
     /**
-     * Preview document
-     */
-    public function preview(Document $document)
-    {
-        $this->authorize('view', $document);
-        
-        $path = $this->storageService->getPath($document);
-        
-        // For PDFs and images, return inline
-        if ($document->isPdf() || $document->isImage()) {
-            return response()->file($path, [
-                'Content-Type' => $document->mime_type,
-                'Content-Disposition' => 'inline; filename="' . $document->original_name . '"',
-            ]);
-        }
-        
-        // For other files, redirect to viewer
-        return redirect()->route('documents.show', $document);
-    }
-    
-    /**
-     * Show edit form
-     */
-    public function edit(Document $document)
-    {
-        $this->authorize('update', $document);
-        
-        return Inertia::render('Documents/Edit', [
-            'document' => $document,
-        ]);
-    }
-    
-    /**
-     * Update document metadata
-     */
-    public function update(Request $request, Document $document)
-    {
-        $this->authorize('update', $document);
-        
-        $request->validate([
-            'original_name' => 'sometimes|string|max:255',
-            'tags' => 'sometimes|array',
-            'tags.*' => 'string|max:50',
-        ]);
-        
-        $document->update($request->only(['original_name', 'tags']));
-        
-        // Log activity
-        activity()
-            ->performedOn($document)
-            ->causedBy(auth()->user())
-            ->withProperties($request->only(['original_name', 'tags']))
-            ->log('Document updated');
-        
-        return redirect()->route('documents.show', $document)
-            ->with('success', 'Document updated successfully.');
-    }
-    
-    /**
      * Delete document
      */
     public function destroy(Document $document)
@@ -514,8 +462,15 @@ class DocumentController extends Controller
                 'mime_type' => $document->mime_type,
             ];
             
-            // Delete physical files
-            $this->storageService->delete($document);
+            // Delete physical file
+            if (Storage::exists($document->stored_name)) {
+                Storage::delete($document->stored_name);
+            }
+            
+            // Delete thumbnail if exists
+            if ($document->thumbnail_path && Storage::exists($document->thumbnail_path)) {
+                Storage::delete($document->thumbnail_path);
+            }
             
             // Delete record (will cascade to children, shares, etc.)
             $document->delete();
@@ -529,7 +484,7 @@ class DocumentController extends Controller
                 ->log('Document deleted');
             
             return redirect()->route('documents.index')
-                ->with('success', 'Document deleted successfully.');
+                ->with('success', 'Document supprimé avec succès.');
             
         } catch (Exception $e) {
             DB::rollBack();
@@ -539,7 +494,7 @@ class DocumentController extends Controller
                 'error' => $e->getMessage(),
             ]);
             
-            return back()->with('error', 'Failed to delete document.');
+            return back()->with('error', 'Échec de la suppression du document.');
         }
     }
     
@@ -559,7 +514,14 @@ class DocumentController extends Controller
         foreach ($documents as $document) {
             if (auth()->user()->can('delete', $document)) {
                 try {
-                    $this->storageService->delete($document);
+                    // Delete files
+                    if (Storage::exists($document->stored_name)) {
+                        Storage::delete($document->stored_name);
+                    }
+                    if ($document->thumbnail_path && Storage::exists($document->thumbnail_path)) {
+                        Storage::delete($document->thumbnail_path);
+                    }
+                    
                     $document->delete();
                     $deletedCount++;
                 } catch (Exception $e) {
@@ -571,7 +533,7 @@ class DocumentController extends Controller
             }
         }
         
-        return back()->with('success', "Deleted {$deletedCount} documents.");
+        return back()->with('success', "{$deletedCount} documents supprimés.");
     }
     
     /**
@@ -609,20 +571,164 @@ class DocumentController extends Controller
         
         if (!$document->thumbnail_path) {
             // Return default thumbnail
-            return response()->file(public_path('images/default-thumbnail.png'));
+            $defaultPath = public_path('images/default-thumbnail.png');
+            if (file_exists($defaultPath)) {
+                return response()->file($defaultPath);
+            }
+            
+            // Generate thumbnail on the fly
+            dispatch(new \App\Jobs\GenerateThumbnail($document))->onQueue('high');
+            return response()->json(['message' => 'Thumbnail generation in progress'], 202);
         }
         
-        $path = Storage::disk('local')->path($document->thumbnail_path);
+        $path = Storage::path($document->thumbnail_path);
         
         if (!file_exists($path)) {
             // Generate thumbnail on the fly
-            dispatch(new \App\Jobs\GenerateDocumentThumbnail($document))->onQueue('high');
-            return response()->file(public_path('images/default-thumbnail.png'));
+            dispatch(new \App\Jobs\GenerateThumbnail($document))->onQueue('high');
+            
+            $defaultPath = public_path('images/default-thumbnail.png');
+            if (file_exists($defaultPath)) {
+                return response()->file($defaultPath);
+            }
+            
+            return response()->json(['message' => 'Thumbnail not found'], 404);
         }
         
         return response()->file($path, [
             'Content-Type' => 'image/jpeg',
             'Cache-Control' => 'public, max-age=86400',
         ]);
+    }
+    
+    /**
+     * Merge multiple PDFs
+     */
+    public function merge(Request $request)
+    {
+        $request->validate([
+            'document_ids' => 'required|array|min:2',
+            'document_ids.*' => 'exists:documents,id',
+            'output_name' => 'required|string|max:255',
+        ]);
+        
+        $documents = Document::whereIn('id', $request->document_ids)
+            ->where('mime_type', 'application/pdf')
+            ->get();
+        
+        if ($documents->count() < 2) {
+            return back()->with('error', 'Au moins 2 documents PDF sont nécessaires pour la fusion.');
+        }
+        
+        // Check authorization for all documents
+        foreach ($documents as $document) {
+            $this->authorize('view', $document);
+        }
+        
+        try {
+            $mergedPath = $this->imagickService->mergePdfs($documents, $request->output_name);
+            
+            // Create new document record for merged PDF
+            $mergedDocument = Document::create([
+                'tenant_id' => auth()->user()->tenant_id,
+                'user_id' => auth()->id(),
+                'original_name' => $request->output_name . '.pdf',
+                'stored_name' => $mergedPath,
+                'mime_type' => 'application/pdf',
+                'extension' => 'pdf',
+                'size' => Storage::size($mergedPath),
+                'hash' => hash_file('sha256', Storage::path($mergedPath)),
+                'metadata' => [
+                    'merged_from' => $documents->pluck('id')->toArray(),
+                    'merged_at' => now()->toIso8601String(),
+                ],
+            ]);
+            
+            // Generate thumbnail
+            dispatch(new \App\Jobs\GenerateThumbnail($mergedDocument));
+            
+            return redirect()->route('documents.show', $mergedDocument)
+                ->with('success', 'Documents fusionnés avec succès.');
+                
+        } catch (Exception $e) {
+            \Log::error('PDF merge failed', [
+                'error' => $e->getMessage(),
+                'document_ids' => $request->document_ids,
+            ]);
+            
+            return back()->with('error', 'Échec de la fusion des documents.');
+        }
+    }
+    
+    /**
+     * Split PDF into pages
+     */
+    public function split(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        if ($document->mime_type !== 'application/pdf') {
+            return back()->with('error', 'Seuls les fichiers PDF peuvent être divisés.');
+        }
+        
+        $request->validate([
+            'pages' => 'required|array',
+            'pages.*' => 'integer|min:1',
+        ]);
+        
+        try {
+            $splitDocuments = $this->imagickService->splitPdf($document, $request->pages);
+            
+            return redirect()->route('documents.index')
+                ->with('success', count($splitDocuments) . ' documents créés à partir de la division.');
+                
+        } catch (Exception $e) {
+            \Log::error('PDF split failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $document->id,
+            ]);
+            
+            return back()->with('error', 'Échec de la division du document.');
+        }
+    }
+    
+    /**
+     * Rotate PDF pages
+     */
+    public function rotate(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        if ($document->mime_type !== 'application/pdf') {
+            return back()->with('error', 'Seuls les fichiers PDF peuvent être pivotés.');
+        }
+        
+        $request->validate([
+            'angle' => 'required|in:90,180,270',
+            'pages' => 'nullable|array',
+            'pages.*' => 'integer|min:1',
+        ]);
+        
+        try {
+            $this->imagickService->rotatePdf($document, $request->angle, $request->pages);
+            
+            // Update document hash
+            $document->update([
+                'hash' => hash_file('sha256', Storage::path($document->stored_name)),
+            ]);
+            
+            // Regenerate thumbnail
+            dispatch(new \App\Jobs\GenerateThumbnail($document));
+            
+            return back()->with('success', 'Document pivoté avec succès.');
+            
+        } catch (Exception $e) {
+            \Log::error('PDF rotation failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $document->id,
+            ]);
+            
+            return back()->with('error', 'Échec de la rotation du document.');
+        }
     }
 }

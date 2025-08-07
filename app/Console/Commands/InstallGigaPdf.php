@@ -147,15 +147,17 @@ class InstallGigaPdf extends Command
 
         // Check external binaries
         $binaries = [
-            'composer' => 'composer --version',
-            'npm' => 'npm --version',
-            'redis-server' => 'redis-server --version',
-            'tesseract' => 'tesseract --version',
-            'pdftotext' => 'pdftotext -v',
+            'composer' => ['command' => 'composer --version', 'required' => true],
+            'npm' => ['command' => 'npm --version', 'required' => true],
+            'redis-server' => ['command' => 'redis-server --version', 'required' => false],
+            'tesseract' => ['command' => 'tesseract --version', 'required' => false],
+            'pdftotext' => ['command' => 'pdftotext -v', 'required' => false],
+            'libreoffice' => ['command' => 'libreoffice --version', 'required' => false],
         ];
 
-        foreach ($binaries as $name => $command) {
-            $process = Process::fromShellCommandline($command);
+        $missingOptional = [];
+        foreach ($binaries as $name => $config) {
+            $process = Process::fromShellCommandline($config['command']);
             $process->setTimeout(5);
             
             try {
@@ -163,10 +165,22 @@ class InstallGigaPdf extends Command
                 if ($process->isSuccessful()) {
                     $this->info("  ✓ $name installed");
                 } else {
-                    $this->warn("  ⚠ $name not found (optional)");
+                    if ($config['required']) {
+                        $this->error("  ✗ $name not found (REQUIRED)");
+                        $failed = true;
+                    } else {
+                        $this->warn("  ⚠ $name not found (optional)");
+                        $missingOptional[] = $name;
+                    }
                 }
             } catch (\Exception $e) {
-                $this->warn("  ⚠ $name not found (optional)");
+                if ($config['required']) {
+                    $this->error("  ✗ $name not found (REQUIRED)");
+                    $failed = true;
+                } else {
+                    $this->warn("  ⚠ $name not found (optional)");
+                    $missingOptional[] = $name;
+                }
             }
         }
 
@@ -176,6 +190,29 @@ class InstallGigaPdf extends Command
         }
 
         $this->info('All required dependencies are installed.');
+        
+        // Offer to install missing optional dependencies
+        if (!empty($missingOptional)) {
+            $this->info('');
+            $this->warn('Some optional dependencies are missing. These are needed for PDF features:');
+            
+            if (in_array('tesseract', $missingOptional)) {
+                $this->installTesseract();
+            }
+            
+            if (in_array('pdftotext', $missingOptional)) {
+                $this->installPdftotext();
+            }
+            
+            if (in_array('libreoffice', $missingOptional)) {
+                $this->offerLibreOfficeInstallation();
+            }
+            
+            if (in_array('redis-server', $missingOptional)) {
+                $this->offerRedisInstallation();
+            }
+        }
+        
         $this->info('');
     }
 
@@ -613,5 +650,266 @@ EOT;
         
         // Reload configuration
         Artisan::call('config:clear');
+    }
+
+    /**
+     * Install Tesseract OCR
+     */
+    protected function installTesseract(): void
+    {
+        $this->warn('');
+        $this->warn('Tesseract OCR is required for text extraction from images and scanned PDFs.');
+        
+        if ($this->confirm('Do you want to install Tesseract OCR?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('Installing Tesseract OCR...');
+            
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y tesseract-ocr',
+                        'sudo apt-get install -y tesseract-ocr-fra tesseract-ocr-deu tesseract-ocr-spa', // Additional languages
+                    ];
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = [
+                        'sudo yum install -y epel-release',
+                        'sudo yum install -y tesseract',
+                        'sudo yum install -y tesseract-langpack-fra tesseract-langpack-deu tesseract-langpack-spa',
+                    ];
+                    break;
+                    
+                case 'macos':
+                    $commands = [
+                        'brew install tesseract',
+                        'brew install tesseract-lang', // All languages
+                    ];
+                    break;
+                    
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install Tesseract manually:');
+                    $this->info('  Ubuntu/Debian: sudo apt-get install tesseract-ocr');
+                    $this->info('  CentOS/RHEL: sudo yum install tesseract');
+                    $this->info('  macOS: brew install tesseract');
+                    $this->info('  Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki');
+                    return;
+            }
+            
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+                
+                if (!$process->isSuccessful()) {
+                    $this->error('Failed to install Tesseract. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+            
+            $this->info('  ✓ Tesseract OCR installed successfully');
+        } else {
+            $this->info('Skipping Tesseract installation.');
+            $this->warn('Note: OCR features will not be available without Tesseract.');
+        }
+    }
+
+    /**
+     * Install pdftotext (part of poppler-utils)
+     */
+    protected function installPdftotext(): void
+    {
+        $this->warn('');
+        $this->warn('pdftotext is required for extracting text from PDF files.');
+        
+        if ($this->confirm('Do you want to install pdftotext?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('Installing pdftotext...');
+            
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = ['sudo apt-get update', 'sudo apt-get install -y poppler-utils'];
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = ['sudo yum install -y poppler-utils'];
+                    break;
+                    
+                case 'macos':
+                    $commands = ['brew install poppler'];
+                    break;
+                    
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install poppler-utils manually:');
+                    $this->info('  Ubuntu/Debian: sudo apt-get install poppler-utils');
+                    $this->info('  CentOS/RHEL: sudo yum install poppler-utils');
+                    $this->info('  macOS: brew install poppler');
+                    $this->info('  Windows: Download from https://poppler.freedesktop.org/');
+                    return;
+            }
+            
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+                
+                if (!$process->isSuccessful()) {
+                    $this->error('Failed to install pdftotext. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+            
+            $this->info('  ✓ pdftotext installed successfully');
+        } else {
+            $this->info('Skipping pdftotext installation.');
+            $this->warn('Note: PDF text extraction may be limited without pdftotext.');
+        }
+    }
+
+    /**
+     * Offer LibreOffice installation
+     */
+    protected function offerLibreOfficeInstallation(): void
+    {
+        $this->warn('');
+        $this->warn('LibreOffice is required for converting Office documents (Word, Excel, PowerPoint) to PDF.');
+        
+        if ($this->confirm('Do you want instructions for installing LibreOffice?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('');
+            $this->info('LibreOffice Installation Instructions:');
+            
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $this->info('  sudo apt-get update');
+                    $this->info('  sudo apt-get install -y libreoffice');
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $this->info('  sudo yum install -y libreoffice');
+                    break;
+                    
+                case 'macos':
+                    $this->info('  brew install --cask libreoffice');
+                    $this->info('  Or download from: https://www.libreoffice.org/download/');
+                    break;
+                    
+                default:
+                    $this->info('  Download from: https://www.libreoffice.org/download/');
+            }
+            
+            $this->info('');
+            $this->info('For headless operation (recommended for servers):');
+            $this->info('  Start LibreOffice in headless mode:');
+            $this->info('  libreoffice --headless --accept="socket,host=127.0.0.1,port=2002;urp;" --nofirststartwizard');
+        }
+    }
+
+    /**
+     * Offer Redis installation
+     */
+    protected function offerRedisInstallation(): void
+    {
+        $this->warn('');
+        $this->warn('Redis is recommended for caching and queue management.');
+        
+        if ($this->confirm('Do you want instructions for installing Redis?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('');
+            $this->info('Redis Installation Instructions:');
+            
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $this->info('  sudo apt-get update');
+                    $this->info('  sudo apt-get install -y redis-server');
+                    $this->info('  sudo systemctl enable redis-server');
+                    $this->info('  sudo systemctl start redis-server');
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $this->info('  sudo yum install -y epel-release');
+                    $this->info('  sudo yum install -y redis');
+                    $this->info('  sudo systemctl enable redis');
+                    $this->info('  sudo systemctl start redis');
+                    break;
+                    
+                case 'macos':
+                    $this->info('  brew install redis');
+                    $this->info('  brew services start redis');
+                    break;
+                    
+                default:
+                    $this->info('  Download from: https://redis.io/download');
+            }
+            
+            $this->info('');
+            $this->info('Don\'t forget to install PHP Redis extension:');
+            $this->info('  pecl install redis');
+            $this->info('  Or: sudo apt-get install php-redis');
+        }
+    }
+
+    /**
+     * Detect operating system
+     */
+    protected function detectOS(): string
+    {
+        if (PHP_OS_FAMILY === 'Darwin') {
+            return 'macos';
+        }
+        
+        if (PHP_OS_FAMILY === 'Windows') {
+            return 'windows';
+        }
+        
+        // For Linux, try to detect distribution
+        if (file_exists('/etc/os-release')) {
+            $osRelease = parse_ini_file('/etc/os-release');
+            $id = strtolower($osRelease['ID'] ?? '');
+            
+            if (in_array($id, ['ubuntu', 'debian'])) {
+                return 'ubuntu';
+            }
+            
+            if (in_array($id, ['centos', 'rhel', 'fedora', 'rocky', 'almalinux'])) {
+                return 'centos';
+            }
+        }
+        
+        // Check for common commands
+        if (shell_exec('which apt-get')) {
+            return 'ubuntu';
+        }
+        
+        if (shell_exec('which yum')) {
+            return 'centos';
+        }
+        
+        return 'unknown';
     }
 }

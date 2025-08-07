@@ -35,6 +35,7 @@ class Document extends Model
         'tags',
         'last_accessed_at',
         'access_count',
+        'extension',
     ];
     
     /**

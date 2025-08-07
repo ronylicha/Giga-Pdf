@@ -103,6 +103,70 @@ class DocumentController extends Controller
     }
     
     /**
+     * Handle file upload via AJAX
+     */
+    public function upload(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|max:' . (auth()->user()->tenant->max_file_size_mb * 1024)
+        ]);
+        
+        try {
+            DB::beginTransaction();
+            
+            $file = $request->file('file');
+            $user = auth()->user();
+            $tenant = $user->tenant;
+            
+            // Check storage quota
+            if ($tenant->getStorageUsed() + $file->getSize() > $tenant->max_storage_gb * 1024 * 1024 * 1024) {
+                return response()->json([
+                    'message' => 'Espace de stockage insuffisant'
+                ], 422);
+            }
+            
+            // Create document record
+            $document = Document::create([
+                'tenant_id' => $user->tenant_id,
+                'user_id' => $user->id,
+                'original_name' => $file->getClientOriginalName(),
+                'mime_type' => $file->getMimeType(),
+                'size' => $file->getSize(),
+                'extension' => strtolower($file->getClientOriginalExtension()),
+                'metadata' => [
+                    'uploaded_at' => now()->toIso8601String(),
+                    'ip_address' => $request->ip(),
+                ],
+            ]);
+            
+            // Store file
+            $path = $file->store('documents/' . $tenant->id, 'local');
+            $document->update([
+                'stored_name' => $path,
+                'hash' => hash_file('sha256', Storage::path($path)),
+            ]);
+            
+            // Generate thumbnail in background
+            dispatch(new \App\Jobs\GenerateThumbnail($document));
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'document' => $document,
+                'message' => 'Document téléchargé avec succès'
+            ]);
+            
+        } catch (Exception $e) {
+            DB::rollBack();
+            
+            return response()->json([
+                'message' => 'Erreur lors du téléchargement: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
      * Store uploaded document
      */
     public function store(UploadDocumentRequest $request)

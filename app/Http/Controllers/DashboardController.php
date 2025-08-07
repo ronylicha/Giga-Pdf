@@ -19,22 +19,25 @@ class DashboardController extends Controller
         $user = $request->user();
         $tenant = $user->tenant;
         
-        // Get statistics
+        // Get statistics (tenant-scoped)
         $stats = [
-            'total_documents' => Document::where('user_id', $user->id)->count(),
-            'total_size' => Document::where('user_id', $user->id)->sum('size'),
-            'conversions_today' => Conversion::where('user_id', $user->id)
-                ->whereDate('created_at', Carbon::today())
+            'documents_count' => Document::where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
                 ->count(),
-            'shared_files' => Share::whereHas('document', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
+            'conversions_count' => Conversion::where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
+                ->count(),
+            'shares_count' => Share::whereHas('document', function ($query) use ($tenant, $user) {
+                $query->where('tenant_id', $tenant->id)
+                      ->where('user_id', $user->id);
             })->count(),
         ];
         
-        // Get recent documents
-        $recentDocuments = Document::where('user_id', $user->id)
+        // Get recent documents (tenant-scoped)
+        $recentDocuments = Document::where('tenant_id', $tenant->id)
+            ->where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
-            ->take(10)
+            ->take(5)
             ->get()
             ->map(function ($document) {
                 return [
@@ -42,7 +45,7 @@ class DashboardController extends Controller
                     'original_name' => $document->original_name,
                     'size' => $document->size,
                     'mime_type' => $document->mime_type,
-                    'extension' => $document->getExtension(),
+                    'extension' => $document->extension ?? pathinfo($document->original_name, PATHINFO_EXTENSION),
                     'created_at' => $document->created_at,
                     'thumbnail_path' => $document->thumbnail_path,
                     'thumbnail_url' => $document->thumbnail_path 

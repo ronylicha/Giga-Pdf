@@ -15,13 +15,11 @@ use Inertia\Inertia;
 
 // Public routes
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
+    return Inertia::render('Landing', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
     ]);
-});
+})->name('home');
 
 // Shared document access (public with optional password)
 Route::get('/shared/{share:token}', [ShareController::class, 'show'])->name('share.show');

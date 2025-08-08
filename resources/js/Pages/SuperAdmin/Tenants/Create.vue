@@ -1,5 +1,5 @@
 <template>
-    <AppLayout title="Créer un Tenant">
+    <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
@@ -254,13 +254,13 @@
                 </form>
             </div>
         </div>
-    </AppLayout>
+    </AuthenticatedLayout>
 </template>
 
 <script setup>
 import { ref } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
-import AppLayout from '@/Layouts/AppLayout.vue';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({

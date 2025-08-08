@@ -60,6 +60,20 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                 </button>
+                
+                <!-- Edit Content Tool -->
+                <button
+                    @click="setTool('edit-content')"
+                    :class="[
+                        'w-full p-3 rounded-lg transition',
+                        currentTool === 'edit-content' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    ]"
+                    title="Modifier le contenu"
+                >
+                    <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </button>
 
                 <!-- Highlight Tool -->
                 <button
@@ -213,6 +227,16 @@
 
                     <!-- PDF Canvas -->
                     <div class="flex justify-center">
+                        <!-- Loading overlay for live modifications -->
+                        <div v-if="isApplyingModification" class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div class="bg-white p-4 rounded-lg shadow-lg">
+                                <svg class="animate-spin h-8 w-8 text-indigo-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <p class="text-sm text-gray-600">Application de la modification...</p>
+                            </div>
+                        </div>
                         <div class="relative bg-white shadow-lg" :style="`transform: scale(${zoomLevel}); transform-origin: top center;`">
                             <canvas
                                 ref="pdfCanvas"
@@ -221,6 +245,27 @@
                                 @mouseup="endAnnotation"
                                 class="cursor-crosshair"
                             />
+                            
+                            <!-- Text Content Layer for editing -->
+                            <div v-if="currentTool === 'edit-content' && showContentPanel" class="absolute inset-0 pointer-events-none">
+                                <div
+                                    v-for="(element, index) in getPageContent(currentPage)"
+                                    :key="`content-${index}`"
+                                    :style="{
+                                        position: 'absolute',
+                                        left: element.x + 'px',
+                                        top: element.y + 'px',
+                                        width: element.width + 'px',
+                                        height: element.height + 'px',
+                                        border: selectedContent === element ? '2px solid blue' : '1px solid transparent',
+                                        background: selectedContent === element ? 'rgba(0, 0, 255, 0.1)' : 'transparent',
+                                        cursor: 'pointer'
+                                    }"
+                                    class="pointer-events-auto hover:bg-blue-50 hover:border-blue-300"
+                                    @click="selectContentElement(element)"
+                                    :title="element.text"
+                                />
+                            </div>
                             
                             <!-- Annotations Layer -->
                             <div class="absolute inset-0 pointer-events-none">
@@ -303,11 +348,11 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Police</label>
                         <select v-model="textProperties.fontFamily" class="w-full px-3 py-2 border rounded-lg">
-                            <option value="Arial">Arial</option>
-                            <option value="Times New Roman">Times New Roman</option>
-                            <option value="Courier New">Courier New</option>
-                            <option value="Georgia">Georgia</option>
-                            <option value="Verdana">Verdana</option>
+                            <option value="helvetica">Helvetica</option>
+                            <option value="times">Times</option>
+                            <option value="courier">Courier</option>
+                            <option value="dejavusans">DejaVu Sans</option>
+                            <option value="freesans">FreeSans</option>
                         </select>
                     </div>
                     <div>
@@ -419,6 +464,81 @@
                     </div>
                 </div>
 
+                <div v-else-if="currentTool === 'edit-content'" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Contenu sélectionné</label>
+                        <div v-if="selectedContent" class="p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm text-gray-600 mb-2">Texte actuel:</p>
+                            <p class="font-mono text-sm mb-3">{{ selectedContent.text }}</p>
+                            <input
+                                v-model="editedText"
+                                @keyup.enter="replaceTextContent(selectedContent.text, editedText)"
+                                type="text"
+                                placeholder="Nouveau texte"
+                                class="w-full px-3 py-2 border rounded-lg mb-2"
+                            >
+                            <div class="flex space-x-2">
+                                <button
+                                    @click="replaceTextContent(selectedContent.text, editedText)"
+                                    class="flex-1 px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                                >
+                                    Remplacer
+                                </button>
+                                <button
+                                    @click="deleteTextContent()"
+                                    class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                                >
+                                    Supprimer
+                                </button>
+                            </div>
+                        </div>
+                        <div v-else class="text-sm text-gray-500">
+                            Cliquez sur un texte dans le PDF pour le modifier
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Ajouter du texte</label>
+                        <input
+                            v-model="newTextToAdd"
+                            type="text"
+                            placeholder="Texte à ajouter"
+                            class="w-full px-3 py-2 border rounded-lg mb-2"
+                        >
+                        <button
+                            @click="isAddingText = true"
+                            :disabled="!newTextToAdd"
+                            class="w-full px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                        >
+                            Cliquer pour positionner
+                        </button>
+                    </div>
+                    
+                    <div v-if="contentModifications.length > 0">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Modifications ({{ contentModifications.length }})
+                        </label>
+                        <div class="max-h-32 overflow-y-auto space-y-1">
+                            <div
+                                v-for="(mod, index) in contentModifications"
+                                :key="index"
+                                class="text-xs p-2 bg-gray-50 rounded flex justify-between items-center"
+                            >
+                                <span>
+                                    {{ mod.type === 'replace' ? 'Remplacer' : mod.type === 'add' ? 'Ajouter' : 'Supprimer' }}
+                                    {{ mod.newText || mod.text || '' }}
+                                </span>
+                                <button
+                                    @click="contentModifications.splice(index, 1)"
+                                    class="text-red-600 hover:text-red-800"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div v-else-if="currentTool === 'stamp'" class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Tampon</label>
@@ -471,10 +591,10 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.min.mjs';
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Configure PDF.js worker - using local file to avoid CORS issues
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.min.js';
 
 const props = defineProps({
     document: Object,
@@ -496,7 +616,8 @@ const canRedo = computed(() => historyIndex.value < history.value.length - 1);
 
 // PDF rendering
 const pdfCanvas = ref(null);
-const pdfDoc = ref(null);
+// Keep pdfDoc outside of Vue's reactivity system to avoid proxy issues with PDF.js private fields
+let pdfDoc = null;
 const pageRendering = ref(false);
 const pageNumPending = ref(null);
 
@@ -506,9 +627,18 @@ const selectedAnnotation = ref(null);
 const currentAnnotation = ref(null);
 const isDrawing = ref(false);
 
+// Content editing
+const contentElements = ref([]);
+const selectedContent = ref(null);
+const contentModifications = ref([]);
+const isEditingContent = ref(false);
+const showContentPanel = ref(false);
+const tempDocumentId = ref(null);
+const isApplyingModification = ref(false);
+
 // Tool properties
 const textProperties = ref({
-    fontFamily: 'Arial',
+    fontFamily: 'helvetica',
     fontSize: 14,
     color: '#000000',
 });
@@ -542,28 +672,86 @@ const stamps = ref([
 
 const selectedStamp = ref(null);
 
+// Additional content editing variables
+const editedText = ref('');
+const newTextToAdd = ref('');
+const isAddingText = ref(false);
+
 // Computed
 const currentPageAnnotations = computed(() => {
     return annotations.value.filter(a => a.page === currentPage.value);
 });
 
 // Methods
-const setTool = (tool) => {
+const setTool = async (tool) => {
     currentTool.value = tool;
     selectedAnnotation.value = null;
+    
+    if (tool === 'edit-content') {
+        showContentPanel.value = true;
+        if (contentElements.value.length === 0) {
+            await loadTextContent();
+        }
+    } else {
+        showContentPanel.value = false;
+    }
 };
 
 const loadPDF = async () => {
-    const url = `/storage/${props.document.stored_name}`;
+    // Use the serve route instead of direct storage access
+    const url = route('documents.serve', props.document.id);
     const loadingTask = pdfjsLib.getDocument(url);
     
     try {
-        pdfDoc.value = await loadingTask.promise;
-        totalPages.value = pdfDoc.value.numPages;
+        pdfDoc = await loadingTask.promise;
+        totalPages.value = pdfDoc.numPages;
         renderPage(1);
+        
+        // Load text content if in edit-content mode
+        if (currentTool.value === 'edit-content') {
+            await loadTextContent();
+        }
     } catch (error) {
         console.error('Error loading PDF:', error);
     }
+};
+
+const loadTextContent = async () => {
+    try {
+        const response = await fetch(route('documents.extract-content', props.document.id), {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            contentElements.value = data.content || [];
+            // Group content by page for easier editing
+            groupContentByPage();
+        }
+    } catch (error) {
+        console.error('Error loading text content:', error);
+        alert('Erreur lors du chargement du contenu du PDF');
+    }
+};
+
+const groupContentByPage = () => {
+    const grouped = {};
+    contentElements.value.forEach(element => {
+        const page = element.page || currentPage.value;
+        if (!grouped[page]) {
+            grouped[page] = [];
+        }
+        grouped[page].push(element);
+    });
+    return grouped;
 };
 
 const renderPage = async (num) => {
@@ -575,7 +763,7 @@ const renderPage = async (num) => {
     pageRendering.value = true;
     
     try {
-        const page = await pdfDoc.value.getPage(num);
+        const page = await pdfDoc.getPage(num);
         const viewport = page.getViewport({ scale: 1.5 });
         const canvas = pdfCanvas.value;
         const context = canvas.getContext('2d');
@@ -633,6 +821,12 @@ const fitToPage = () => {
 
 const startAnnotation = (e) => {
     if (currentTool.value === 'select') return;
+    
+    // Handle content editing
+    if (currentTool.value === 'edit-content') {
+        handleContentClick(e);
+        return;
+    }
     
     const rect = pdfCanvas.value.getBoundingClientRect();
     const x = (e.clientX - rect.left) / zoomLevel.value;
@@ -759,18 +953,202 @@ const redo = () => {
     annotations.value = JSON.parse(history.value[historyIndex.value]);
 };
 
+const handleContentClick = (e) => {
+    const rect = pdfCanvas.value.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / zoomLevel.value;
+    const y = (e.clientY - rect.top) / zoomLevel.value;
+    
+    // Find the closest text element
+    const closest = findClosestTextElement(x, y);
+    if (closest) {
+        selectedContent.value = closest;
+        isEditingContent.value = true;
+    }
+};
+
+const getPageContent = (pageNum) => {
+    return contentElements.value.filter(el => el.page === pageNum);
+};
+
+const selectContentElement = (element) => {
+    selectedContent.value = element;
+    editedText.value = element.text;
+    isEditingContent.value = true;
+};
+
+const findClosestTextElement = (x, y) => {
+    let closest = null;
+    let minDistance = Infinity;
+    
+    const pageContent = getPageContent(currentPage.value);
+    pageContent.forEach(element => {
+        const distance = Math.sqrt(
+            Math.pow(element.x - x, 2) + 
+            Math.pow(element.y - y, 2)
+        );
+        
+        if (distance < minDistance && distance < 20) {
+            minDistance = distance;
+            closest = element;
+        }
+    });
+    
+    return closest;
+};
+
+const replaceTextContent = async (oldText, newText) => {
+    if (!selectedContent.value || isApplyingModification.value) return;
+    
+    const modification = {
+        type: 'replace',
+        page: currentPage.value,
+        x: selectedContent.value.x,
+        y: selectedContent.value.y,
+        width: selectedContent.value.width,
+        height: selectedContent.value.height,
+        oldText: oldText,
+        newText: newText,
+        text: newText,
+        font: textProperties.value.fontFamily,
+        fontSize: textProperties.value.fontSize,
+        color: textProperties.value.color,
+        coverOld: true
+    };
+    
+    // Apply modification in real-time
+    await applyModificationLive(modification);
+    
+    contentModifications.value.push(modification);
+    hasChanges.value = true;
+    selectedContent.value = null;
+    editedText.value = '';
+};
+
+const addNewText = (text, x, y) => {
+    const modification = {
+        type: 'add',
+        page: currentPage.value,
+        x: x,
+        y: y,
+        text: text,
+        font: textProperties.value.fontFamily,
+        fontSize: textProperties.value.fontSize,
+        color: textProperties.value.color
+    };
+    
+    contentModifications.value.push(modification);
+    hasChanges.value = true;
+};
+
+const deleteTextContent = async () => {
+    if (!selectedContent.value || isApplyingModification.value) return;
+    
+    const modification = {
+        type: 'delete',
+        page: currentPage.value,
+        x: selectedContent.value.x,
+        y: selectedContent.value.y,
+        width: selectedContent.value.width,
+        height: selectedContent.value.height
+    };
+    
+    // Apply modification in real-time
+    await applyModificationLive(modification);
+    
+    contentModifications.value.push(modification);
+    selectedContent.value = null;
+    hasChanges.value = true;
+};
+
+// Apply modification in real-time and reload PDF
+const applyModificationLive = async (modification) => {
+    isApplyingModification.value = true;
+    
+    try {
+        const response = await fetch(route('documents.apply-modification', props.document.id), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                modification: modification,
+                temp_document_id: tempDocumentId.value
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to apply modification');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Update temp document ID
+            tempDocumentId.value = data.temp_document.id;
+            
+            // Reload PDF with new version
+            await reloadPDF(data.serve_url);
+            
+            // Reload text content
+            await loadTextContent();
+        }
+    } catch (error) {
+        console.error('Error applying modification:', error);
+        alert('Erreur lors de l\'application de la modification');
+    } finally {
+        isApplyingModification.value = false;
+    }
+};
+
+// Reload PDF with new content
+const reloadPDF = async (url) => {
+    try {
+        const loadingTask = pdfjsLib.getDocument(url);
+        pdfDoc = await loadingTask.promise;
+        
+        // Re-render current page
+        await renderPage(currentPage.value);
+    } catch (error) {
+        console.error('Error reloading PDF:', error);
+    }
+};
+
 const saveDocument = async () => {
     isSaving.value = true;
     
     try {
-        await router.post(route('documents.update', props.document.id), {
-            annotations: annotations.value,
-        }, {
-            preserveScroll: true,
-            onSuccess: () => {
-                hasChanges.value = false;
-            },
-        });
+        // If we have a temp document with modifications, save it as final
+        if (tempDocumentId.value && contentModifications.value.length > 0) {
+            await router.post(route('documents.save-modifications', props.document.id), {
+                temp_document_id: tempDocumentId.value
+            }, {
+                preserveScroll: false,
+                onSuccess: () => {
+                    // Will redirect to new document
+                },
+                onError: (errors) => {
+                    console.error('Error saving modifications:', errors);
+                    alert('Erreur lors de la sauvegarde des modifications');
+                }
+            });
+        } else if (annotations.value.length > 0) {
+            // Save annotations only
+            await router.post(route('documents.update', props.document.id), {
+                annotations: annotations.value,
+            }, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    hasChanges.value = false;
+                },
+                onError: (errors) => {
+                    console.error('Error saving annotations:', errors);
+                    alert('Erreur lors de la sauvegarde des annotations');
+                }
+            });
+        }
     } finally {
         isSaving.value = false;
     }

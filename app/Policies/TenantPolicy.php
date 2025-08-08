@@ -104,7 +104,7 @@ class TenantPolicy
             return false;
         }
         
-        return $user->hasPermission('settings.update');
+        return $user->hasPermissionTo('manage tenant settings') || $user->isTenantAdmin();
     }
 
     /**
@@ -117,6 +117,6 @@ class TenantPolicy
             return false;
         }
         
-        return $user->hasPermission('settings.billing');
+        return $user->hasPermissionTo('view tenant statistics') || $user->isTenantAdmin();
     }
 }

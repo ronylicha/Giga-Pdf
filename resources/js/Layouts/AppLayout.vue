@@ -1,13 +1,20 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 
 const showingNavigationDropdown = ref(false);
+
+// Debug pour voir le rôle de l'utilisateur
+onMounted(() => {
+    const page = usePage();
+    console.log('User role:', page.props.auth.user?.role);
+    console.log('User data:', page.props.auth.user);
+});
 </script>
 
 <template>
@@ -40,8 +47,8 @@ const showingNavigationDropdown = ref(false);
                                     Dashboard
                                 </NavLink>
                                 
-                                <!-- Documents Menu -->
-                                <Dropdown align="left" width="48">
+                                <!-- Documents Menu (not for super admin) -->
+                                <Dropdown v-if="$page.props.auth.user.role !== 'super-admin'" align="left" width="48">
                                     <template #trigger>
                                         <button class="inline-flex items-center px-3 py-2 text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
                                             Documents
@@ -84,8 +91,8 @@ const showingNavigationDropdown = ref(false);
                                     </template>
                                 </Dropdown>
                                 
-                                <!-- Outils PDF Menu -->
-                                <Dropdown align="left" width="48">
+                                <!-- Outils PDF Menu (not for super admin) -->
+                                <Dropdown v-if="$page.props.auth.user.role !== 'super-admin'" align="left" width="48">
                                     <template #trigger>
                                         <button class="inline-flex items-center px-3 py-2 text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
                                             Outils PDF
@@ -156,8 +163,45 @@ const showingNavigationDropdown = ref(false);
                                     </template>
                                 </Dropdown>
                                 
-                                <!-- Tenant Admin Menu (if user is admin) -->
-                                <Dropdown v-if="$page.props.auth.user.role === 'tenant_admin' || $page.props.auth.user.role === 'super_admin'" align="left" width="48">
+                                <!-- Super Admin Menu -->
+                                <Dropdown v-if="$page.props.auth.user.role === 'super-admin'" align="left" width="48">
+                                    <template #trigger>
+                                        <button class="inline-flex items-center px-3 py-2 text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
+                                            Super Admin
+                                            <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                            </svg>
+                                        </button>
+                                    </template>
+
+                                    <template #content>
+                                        <DropdownLink :href="route('tenants.index')">
+                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                            </svg>
+                                            Gérer Tenants
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('tenants.create')">
+                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            Nouveau Tenant
+                                        </DropdownLink>
+                                        
+                                        <div class="border-t border-gray-200 dark:border-gray-600"></div>
+                                        
+                                        <a href="/horizon" target="_blank" class="block px-4 py-2 text-sm leading-5 text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 transition duration-150 ease-in-out">
+                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                            </svg>
+                                            Laravel Horizon
+                                        </a>
+                                    </template>
+                                </Dropdown>
+                                
+                                <!-- Tenant Admin Menu (if user is tenant admin only) -->
+                                <Dropdown v-if="$page.props.auth.user.role === 'tenant-admin'" align="left" width="48">
                                     <template #trigger>
                                         <button class="inline-flex items-center px-3 py-2 text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
                                             Administration
@@ -195,65 +239,6 @@ const showingNavigationDropdown = ref(false);
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
                                             </svg>
                                             Stockage
-                                        </DropdownLink>
-                                    </template>
-                                </Dropdown>
-                                
-                                <!-- Administration Menu (for tenant admins) -->
-                                <Dropdown v-if="$page.props.auth.user?.is_tenant_admin" align="left" width="48">
-                                    <template #trigger>
-                                        <button class="inline-flex items-center px-3 py-2 text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
-                                            Administration
-                                            <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                            </svg>
-                                        </button>
-                                    </template>
-
-                                    <template #content>
-                                        <DropdownLink :href="route('tenant.admin.dashboard')">
-                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-                                            </svg>
-                                            Dashboard Admin
-                                        </DropdownLink>
-                                        
-                                        <DropdownLink :href="route('tenant.admin.users.index')">
-                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                                            </svg>
-                                            Utilisateurs
-                                        </DropdownLink>
-                                        
-                                        <DropdownLink :href="route('tenant.admin.roles.index')">
-                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                                            </svg>
-                                            Rôles & Permissions
-                                        </DropdownLink>
-                                        
-                                        <div class="border-t border-gray-200 dark:border-gray-600"></div>
-                                        
-                                        <DropdownLink :href="route('tenant.admin.activity')">
-                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                            </svg>
-                                            Journal d'Activité
-                                        </DropdownLink>
-                                        
-                                        <DropdownLink :href="route('tenant.admin.storage')">
-                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                                            </svg>
-                                            Stockage
-                                        </DropdownLink>
-                                        
-                                        <DropdownLink :href="route('tenant.admin.settings')">
-                                            <svg class="w-4 h-4 me-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                            </svg>
-                                            Paramètres
                                         </DropdownLink>
                                     </template>
                                 </Dropdown>

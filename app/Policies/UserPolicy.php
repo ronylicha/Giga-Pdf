@@ -14,7 +14,9 @@ class UserPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->hasPermission('users.view');
+        return $user->hasPermissionTo('view users') || 
+               $user->hasRole(['tenant-admin', 'manager']) ||
+               $user->isSuperAdmin();
     }
 
     /**
@@ -28,7 +30,7 @@ class UserPolicy
         }
         
         // Must have permission and be in same tenant
-        return $user->hasPermission('users.view') && 
+        return ($user->hasPermissionTo('view users') || $user->hasRole(['tenant-admin', 'manager'])) && 
                $user->tenant_id === $model->tenant_id;
     }
 
@@ -37,7 +39,9 @@ class UserPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasPermission('users.create');
+        return $user->hasPermissionTo('create users') || 
+               $user->hasRole(['tenant-admin', 'manager']) ||
+               $user->isSuperAdmin();
     }
 
     /**
@@ -65,7 +69,7 @@ class UserPolicy
         }
         
         // Must have permission and be able to manage the user
-        return $user->hasPermission('users.delete') && 
+        return ($user->hasPermissionTo('delete users') || $user->hasRole(['tenant-admin', 'manager'])) && 
                $user->canManageUser($model);
     }
 
@@ -74,7 +78,7 @@ class UserPolicy
      */
     public function restore(User $user, User $model): bool
     {
-        return $user->hasPermission('users.delete') && 
+        return ($user->hasPermissionTo('delete users') || $user->hasRole(['tenant-admin', 'manager'])) && 
                $user->canManageUser($model);
     }
 
@@ -96,7 +100,7 @@ class UserPolicy
             return false;
         }
         
-        return $user->hasPermission('users.roles') && 
+        return ($user->hasPermissionTo('assign roles') || $user->hasRole(['tenant-admin'])) && 
                $user->canManageUser($model);
     }
 
@@ -110,7 +114,7 @@ class UserPolicy
             return false;
         }
         
-        return $user->hasPermission('users.update') && 
+        return ($user->hasPermissionTo('edit users') || $user->hasRole(['tenant-admin', 'manager'])) && 
                $user->canManageUser($model);
     }
 
@@ -124,7 +128,7 @@ class UserPolicy
             return false;
         }
         
-        return $user->hasPermission('users.update') && 
+        return ($user->hasPermissionTo('edit users') || $user->hasRole(['tenant-admin'])) && 
                $user->canManageUser($model);
     }
 

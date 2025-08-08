@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Role;
-use App\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -25,6 +25,9 @@ class RoleController extends Controller
         if (!$user->isSuperAdmin()) {
             // Non-super admins can only see roles from their tenant
             $query->where('tenant_id', $user->tenant_id);
+        } else {
+            // Super admin can see all roles including global ones
+            $query->whereNull('tenant_id')->orWhere('tenant_id', '>', 0);
         }
         
         $roles = $query->with('users')
@@ -33,9 +36,9 @@ class RoleController extends Controller
         
         return Inertia::render('Roles/Index', [
             'roles' => $roles,
-            'canCreate' => $user->hasPermission('roles.create'),
-            'canEdit' => $user->hasPermission('roles.update'),
-            'canDelete' => $user->hasPermission('roles.delete'),
+            'canCreate' => $user->hasPermissionTo('create roles') || $user->isTenantAdmin(),
+            'canEdit' => $user->hasPermissionTo('edit roles') || $user->isTenantAdmin(),
+            'canDelete' => $user->hasPermissionTo('delete roles') || $user->isTenantAdmin(),
         ]);
     }
     
@@ -46,7 +49,7 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('roles.create')) {
+        if (!$user->hasPermissionTo('create roles') && !$user->isTenantAdmin()) {
             abort(403);
         }
         
@@ -62,7 +65,7 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('roles.create')) {
+        if (!$user->hasPermissionTo('create roles') && !$user->isTenantAdmin()) {
             abort(403);
         }
         
@@ -106,13 +109,12 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('roles.update')) {
+        if (!$user->hasPermissionTo('edit roles') && !$user->isTenantAdmin()) {
             abort(403);
         }
         
         // Check if user can manage this role
-        $currentRole = $user->role();
-        if ($currentRole && !$currentRole->canManage($role)) {
+        if (!$user->isSuperAdmin() && !$user->isTenantAdmin()) {
             abort(403, 'Vous ne pouvez pas modifier ce rôle.');
         }
         
@@ -130,13 +132,12 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('roles.update')) {
+        if (!$user->hasPermissionTo('edit roles') && !$user->isTenantAdmin()) {
             abort(403);
         }
         
         // Check if user can manage this role
-        $currentRole = $user->role();
-        if ($currentRole && !$currentRole->canManage($role)) {
+        if (!$user->isSuperAdmin() && !$user->isTenantAdmin()) {
             abort(403, 'Vous ne pouvez pas modifier ce rôle.');
         }
         
@@ -162,10 +163,8 @@ class RoleController extends Controller
             $role->update($validated);
         }
         
-        // Clear cache for users with this role
-        $role->users()->each(function ($user) {
-            $user->clearPermissionCache();
-        });
+        // Clear permission cache
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
         
         return redirect()
             ->route('roles.index')
@@ -179,7 +178,7 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('roles.delete')) {
+        if (!$user->hasPermissionTo('delete roles') && !$user->isTenantAdmin()) {
             abort(403);
         }
         
@@ -206,7 +205,8 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('roles.view') || !$user->hasPermission('users.view')) {
+        if (!($user->hasPermissionTo('view roles') || $user->isTenantAdmin()) || 
+            !($user->hasPermissionTo('view users') || $user->isTenantAdmin())) {
             abort(403);
         }
         
@@ -227,7 +227,7 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('users.roles')) {
+        if (!$user->hasPermissionTo('assign roles') && !$user->isTenantAdmin()) {
             abort(403);
         }
         
@@ -257,7 +257,7 @@ class RoleController extends Controller
     {
         $user = auth()->user();
         
-        if (!$user->hasPermission('users.roles')) {
+        if (!$user->hasPermissionTo('assign roles') && !$user->isTenantAdmin()) {
             abort(403);
         }
         

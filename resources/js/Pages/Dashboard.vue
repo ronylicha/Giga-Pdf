@@ -172,9 +172,9 @@
                                         </svg>
                                     </button>
                                     <Link
-                                        :href="route('documents.edit', document.id)"
+                                        :href="route('documents.html-editor', document.id)"
                                         class="text-gray-400 hover:text-gray-600"
-                                        title="Éditer"
+                                        title="Éditer HTML"
                                     >
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -286,7 +286,7 @@ const formatDate = (date) => {
 };
 
 const previewDocument = (document) => {
-    window.open(route('documents.preview', document.id), '_blank');
+    window.open(route('documents.show', document.id), '_blank');
 };
 
 const downloadDocument = (document) => {

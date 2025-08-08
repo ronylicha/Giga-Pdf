@@ -1,5 +1,5 @@
 <template>
-    <AppLayout title="Gestion des Rôles">
+    <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
@@ -139,11 +139,11 @@
                 </div>
             </div>
         </div>
-    </AppLayout>
+    </AuthenticatedLayout>
 </template>
 
 <script setup>
-import AppLayout from '@/Layouts/AppLayout.vue';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
 

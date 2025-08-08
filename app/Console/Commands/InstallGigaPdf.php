@@ -24,14 +24,18 @@ class InstallGigaPdf extends Command
                             {--force : Force installation even if already installed}
                             {--skip-deps : Skip dependency checks}
                             {--with-demo : Install with demo data}
-                            {--no-workers : Skip supervisor configuration}';
+                            {--no-workers : Skip supervisor configuration}
+                            {--fresh : Fresh install with database reset}
+                            {--skip-npm : Skip npm packages installation}
+                            {--clean-deps : Remove unused dependencies}
+                            {--install-pymupdf : Install PyMuPDF for advanced PDF operations}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Install and configure Giga-PDF application';
+    protected $description = 'Install and configure Giga-PDF application with all dependencies';
 
     /**
      * Execute the console command.
@@ -54,6 +58,16 @@ class InstallGigaPdf extends Command
         // Check dependencies
         if (!$this->option('skip-deps')) {
             $this->checkDependencies();
+        }
+        
+        // Clean unused dependencies if requested
+        if ($this->option('clean-deps')) {
+            $this->cleanUnusedDependencies();
+        }
+        
+        // Install PyMuPDF if requested or by default
+        if ($this->option('install-pymupdf') || !$this->option('skip-deps')) {
+            $this->installPyMuPDF();
         }
 
         // Environment setup
@@ -119,7 +133,7 @@ class InstallGigaPdf extends Command
         $this->info('Checking system dependencies...');
         
         $requirements = [
-            'PHP Version >= 8.4' => version_compare(PHP_VERSION, '8.4.0', '>='),
+            'PHP Version >= 8.2' => version_compare(PHP_VERSION, '8.2.0', '>='),
             'BCMath Extension' => extension_loaded('bcmath'),
             'Ctype Extension' => extension_loaded('ctype'),
             'JSON Extension' => extension_loaded('json'),
@@ -152,6 +166,13 @@ class InstallGigaPdf extends Command
             'redis-server' => ['command' => 'redis-server --version', 'required' => false],
             'tesseract' => ['command' => 'tesseract --version', 'required' => false],
             'pdftotext' => ['command' => 'pdftotext -v', 'required' => false],
+            'pdftohtml' => ['command' => 'pdftohtml -v', 'required' => false],
+            'wkhtmltopdf' => ['command' => 'wkhtmltopdf --version', 'required' => false],
+            'convert' => ['command' => 'convert --version', 'required' => false, 'name' => 'ImageMagick'],
+            'pdftoppm' => ['command' => 'pdftoppm -v', 'required' => false],
+            'ghostscript' => ['command' => 'gs --version', 'required' => false],
+            'python3' => ['command' => 'python3 --version', 'required' => false],
+            'pip3' => ['command' => 'pip3 --version', 'required' => false],
             'libreoffice' => ['command' => 'libreoffice --version', 'required' => false],
         ];
 
@@ -211,6 +232,27 @@ class InstallGigaPdf extends Command
             if (in_array('redis-server', $missingOptional)) {
                 $this->offerRedisInstallation();
             }
+            
+            if (in_array('wkhtmltopdf', $missingOptional)) {
+                $this->installWkhtmltopdf();
+            }
+            
+            if (in_array('pdftohtml', $missingOptional)) {
+                $this->installPdfTools();
+            }
+            
+            if (in_array('convert', $missingOptional) || in_array('ImageMagick', $missingOptional)) {
+                $this->installImageMagick();
+            }
+            
+            if (in_array('python3', $missingOptional) || in_array('pip3', $missingOptional)) {
+                $this->installPythonTools();
+            }
+        }
+        
+        // Always check and install Python PDF libraries if Python is available
+        if ($this->commandExists('python3') && $this->commandExists('pip3')) {
+            $this->checkAndInstallPythonPdfLibraries();
         }
         
         $this->info('');
@@ -370,8 +412,8 @@ class InstallGigaPdf extends Command
 
         // Get super admin details
         $adminName = $this->ask('Super Admin name', 'Super Admin');
-        $adminEmail = $this->ask('Super Admin email', 'admin@gigapdf.local');
-        $adminPassword = $this->secret('Super Admin password (min 8 characters)');
+        $adminEmail = $this->ask('Super Admin email', 'admin@giga-pdf.local');
+        $adminPassword = $this->secret('Super Admin password (min 8 characters)') ?: 'Admin@123456';
         
         while (strlen($adminPassword) < 8) {
             $this->error('Password must be at least 8 characters long.');
@@ -383,7 +425,7 @@ class InstallGigaPdf extends Command
         $this->info('Creating Default Tenant:');
         $tenantName = $this->ask('Tenant name', 'Default Organization');
         $tenantSlug = Str::slug($tenantName);
-        $tenantDomain = $this->ask('Tenant domain (optional)', '');
+        $tenantDomain = $this->ask('Tenant domain (optional)', 'giga-pdf.local');
 
         DB::beginTransaction();
         
@@ -396,8 +438,8 @@ class InstallGigaPdf extends Command
                 'settings' => [
                     'allow_registration' => true,
                     'require_2fa' => false,
-                    'default_locale' => 'en',
-                    'timezone' => 'UTC',
+                    'default_locale' => 'fr',
+                    'timezone' => 'Europe/Paris',
                 ],
                 'max_storage_gb' => 100,
                 'max_users' => 100,
@@ -414,20 +456,15 @@ class InstallGigaPdf extends Command
 
             $this->info('  ✓ Tenant created: ' . $tenantName);
 
-            // Create super admin user
-            $user = User::create([
-                'tenant_id' => $tenant->id,
-                'name' => $adminName,
-                'email' => $adminEmail,
-                'password' => Hash::make($adminPassword),
-                'email_verified_at' => now(),
-                'role' => 'super_admin',
-            ]);
-
-            $this->info('  ✓ Super Admin created: ' . $adminEmail);
-
-            // Create roles and permissions
+            // Create roles and permissions first
             $this->createRolesAndPermissions();
+
+            // Use the make:super-admin command to create super admin properly
+            $this->call('make:super-admin', [
+                'email' => $adminEmail,
+                '--name' => $adminName,
+                '--password' => $adminPassword
+            ]);
 
             DB::commit();
             
@@ -874,6 +911,732 @@ EOT;
         }
     }
 
+    /**
+     * Install wkhtmltopdf
+     */
+    protected function installWkhtmltopdf(): void
+    {
+        $this->warn('');
+        $this->warn('wkhtmltopdf is required for HTML to PDF conversion.');
+        
+        if ($this->confirm('Do you want to install wkhtmltopdf?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('Installing wkhtmltopdf...');
+            
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y wkhtmltopdf wkhtmltoimage'
+                    ];
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = [
+                        'sudo yum install -y epel-release',
+                        'sudo yum install -y wkhtmltopdf'
+                    ];
+                    break;
+                    
+                case 'macos':
+                    $commands = ['brew install --cask wkhtmltopdf'];
+                    break;
+                    
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install wkhtmltopdf manually:');
+                    $this->info('  Ubuntu/Debian: sudo apt-get install wkhtmltopdf');
+                    $this->info('  CentOS/RHEL: sudo yum install wkhtmltopdf');
+                    $this->info('  macOS: brew install --cask wkhtmltopdf');
+                    $this->info('  Download: https://wkhtmltopdf.org/downloads.html');
+                    return;
+            }
+            
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+                
+                if (!$process->isSuccessful()) {
+                    $this->error('Failed to install wkhtmltopdf. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+            
+            $this->info('  ✓ wkhtmltopdf installed successfully');
+        } else {
+            $this->info('Skipping wkhtmltopdf installation.');
+            $this->warn('Note: HTML to PDF conversion will not work without wkhtmltopdf.');
+        }
+    }
+
+    /**
+     * Install PDF tools (pdftohtml, pdftoppm, etc.)
+     */
+    protected function installPdfTools(): void
+    {
+        $this->warn('');
+        $this->warn('PDF tools are required for PDF manipulation and conversion.');
+        
+        if ($this->confirm('Do you want to install PDF tools?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('Installing PDF tools...');
+            
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y poppler-utils',
+                        'sudo apt-get install -y pdftk',
+                        'sudo apt-get install -y qpdf',
+                        'sudo apt-get install -y ghostscript'
+                    ];
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = [
+                        'sudo yum install -y poppler-utils',
+                        'sudo yum install -y pdftk',
+                        'sudo yum install -y qpdf',
+                        'sudo yum install -y ghostscript'
+                    ];
+                    break;
+                    
+                case 'macos':
+                    $commands = [
+                        'brew install poppler',
+                        'brew install pdftk-java',
+                        'brew install qpdf',
+                        'brew install ghostscript'
+                    ];
+                    break;
+                    
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install PDF tools manually.');
+                    return;
+            }
+            
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+                
+                if (!$process->isSuccessful()) {
+                    $this->warn('Some PDF tools may not have installed correctly.');
+                }
+            }
+            
+            $this->info('  ✓ PDF tools installed successfully');
+        } else {
+            $this->info('Skipping PDF tools installation.');
+            $this->warn('Note: Some PDF features may be limited.');
+        }
+    }
+
+    /**
+     * Install ImageMagick
+     */
+    protected function installImageMagick(): void
+    {
+        $this->warn('');
+        $this->warn('ImageMagick is required for image processing and PDF to image conversion.');
+        
+        if ($this->confirm('Do you want to install ImageMagick?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('Installing ImageMagick...');
+            
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y imagemagick',
+                        'sudo apt-get install -y libmagickwand-dev'
+                    ];
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = [
+                        'sudo yum install -y ImageMagick',
+                        'sudo yum install -y ImageMagick-devel'
+                    ];
+                    break;
+                    
+                case 'macos':
+                    $commands = ['brew install imagemagick'];
+                    break;
+                    
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install ImageMagick manually:');
+                    $this->info('  Ubuntu/Debian: sudo apt-get install imagemagick');
+                    $this->info('  CentOS/RHEL: sudo yum install ImageMagick');
+                    $this->info('  macOS: brew install imagemagick');
+                    return;
+            }
+            
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+                
+                if (!$process->isSuccessful()) {
+                    $this->error('Failed to install ImageMagick. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+            
+            // Install PHP Imagick extension
+            $this->info('Installing PHP Imagick extension...');
+            $process = Process::fromShellCommandline('pecl install imagick');
+            $process->setTimeout(300);
+            $process->run();
+            
+            if (!$process->isSuccessful()) {
+                $this->warn('PHP Imagick extension installation failed. You may need to install it manually.');
+                $this->info('  Ubuntu/Debian: sudo apt-get install php-imagick');
+                $this->info('  CentOS/RHEL: sudo yum install php-imagick');
+            }
+            
+            $this->info('  ✓ ImageMagick installed successfully');
+        } else {
+            $this->info('Skipping ImageMagick installation.');
+            $this->warn('Note: Image processing features will be limited.');
+        }
+    }
+
+    /**
+     * Install Python tools for table extraction
+     */
+    protected function installPythonTools(): void
+    {
+        $this->warn('');
+        $this->warn('Python tools are required for advanced table extraction from PDFs.');
+        
+        if ($this->confirm('Do you want to install Python tools for table extraction?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('Installing Python and pip...');
+            
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y python3 python3-pip python3-dev',
+                        'sudo apt-get install -y default-jre'  // Required for tabula-py
+                    ];
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = [
+                        'sudo yum install -y python3 python3-pip python3-devel',
+                        'sudo yum install -y java-11-openjdk'
+                    ];
+                    break;
+                    
+                case 'macos':
+                    $commands = [
+                        'brew install python3',
+                        'brew install openjdk'
+                    ];
+                    break;
+                    
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    return;
+            }
+            
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+                
+                if (!$process->isSuccessful()) {
+                    $this->warn('Some Python dependencies may not have installed correctly.');
+                }
+            }
+            
+            // Install Python packages for PDF processing and table extraction
+            $this->info('Installing Python packages for PDF processing...');
+            $pythonPackages = [
+                'PyMuPDF' => 'Advanced PDF manipulation and rendering',
+                'beautifulsoup4' => 'HTML parsing for PDF conversion',
+                'lxml' => 'XML/HTML processing library',
+                'tabula-py' => 'Table extraction from PDFs',
+                'pandas' => 'Data manipulation library',
+                'pdfplumber' => 'PDF text and table extraction',
+                'openpyxl' => 'Excel file support',
+                'pytesseract' => 'OCR support for scanned PDFs',
+                'opencv-python-headless' => 'Computer vision for table detection',
+                'Pillow' => 'Image processing library',
+                'reportlab' => 'PDF generation library'
+            ];
+            
+            // Try to install all packages at once for efficiency
+            $allPackages = implode(' ', array_keys($pythonPackages));
+            $this->info('Installing all Python packages...');
+            
+            // Try with --break-system-packages for newer systems
+            $process = Process::fromShellCommandline("pip3 install $allPackages --break-system-packages");
+            $process->setTimeout(600);
+            $process->run();
+            
+            if (!$process->isSuccessful()) {
+                // Fallback to user installation
+                $this->info('Trying user installation...');
+                $process = Process::fromShellCommandline("pip3 install --user $allPackages");
+                $process->setTimeout(600);
+                $process->run();
+            }
+            
+            if ($process->isSuccessful()) {
+                $this->info('  ✓ All Python packages installed successfully');
+                foreach ($pythonPackages as $package => $description) {
+                    $this->info("    - $package: $description");
+                }
+            } else {
+                $this->warn('Some Python packages may have failed to install.');
+                $this->info('You can manually install them with:');
+                $this->info("  pip3 install $allPackages --break-system-packages");
+            }
+            
+            // Create Python extraction scripts
+            $this->createPythonExtractionScripts();
+            
+            $this->info('  ✓ Python tools installed successfully');
+        } else {
+            $this->info('Skipping Python tools installation.');
+            $this->warn('Note: Advanced table extraction will not be available.');
+        }
+    }
+
+    /**
+     * Check and install Python PDF libraries if missing
+     */
+    protected function checkAndInstallPythonPdfLibraries(): void
+    {
+        $this->info('Checking Python PDF libraries...');
+        
+        // Check if tabula-py is installed
+        exec('python3 -c "import tabula" 2>&1', $output, $returnCode);
+        
+        if ($returnCode !== 0) {
+            $this->warn('Python PDF libraries are not installed.');
+            if ($this->confirm('Do you want to install them now for better PDF extraction?', true)) {
+                $packages = 'PyMuPDF beautifulsoup4 lxml tabula-py pandas pdfplumber openpyxl pytesseract Pillow reportlab';
+                
+                $this->info('Installing Python PDF libraries...');
+                $process = Process::fromShellCommandline("pip3 install $packages --break-system-packages");
+                $process->setTimeout(600);
+                $process->run();
+                
+                if ($process->isSuccessful()) {
+                    $this->info('  ✓ Python PDF libraries installed successfully');
+                } else {
+                    $this->warn('Failed to install some packages. Try manually:');
+                    $this->info("  pip3 install $packages --break-system-packages");
+                }
+            }
+        } else {
+            $this->info('  ✓ Python PDF libraries are already installed');
+        }
+    }
+    
+    /**
+     * Create Python scripts for table extraction
+     */
+    protected function createPythonExtractionScripts(): void
+    {
+        $this->info('Creating Python extraction scripts...');
+        
+        // Create tabula extraction script
+        $tabulaScript = <<<'PYTHON'
+#!/usr/bin/env python3
+import sys
+import json
+import tabula
+from pathlib import Path
+
+def extract_tables_to_html(pdf_path):
+    """Extract tables from PDF and return HTML"""
+    try:
+        # Read all tables from PDF
+        tables = tabula.read_pdf(
+            pdf_path, 
+            pages='all',
+            multiple_tables=True,
+            lattice=True  # Better border detection
+        )
+        
+        html_output = []
+        for i, table in enumerate(tables):
+            # Convert each table to HTML
+            html = table.to_html(
+                index=False,
+                table_id=f'table_{i}',
+                classes='pdf-table border-collapse'
+            )
+            html_output.append(html)
+        
+        return '\n'.join(html_output)
+        
+    except Exception as e:
+        return f"<p>Error: {str(e)}</p>"
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("<p>Usage: extract_tables.py <pdf_file></p>")
+        sys.exit(1)
+    
+    pdf_file = sys.argv[1]
+    html = extract_tables_to_html(pdf_file)
+    print(html)
+PYTHON;
+
+        file_put_contents(base_path('extract_tables.py'), $tabulaScript);
+        chmod(base_path('extract_tables.py'), 0755);
+        
+        // Create camelot extraction script
+        $camelotScript = <<<'PYTHON'
+#!/usr/bin/env python3
+import sys
+import camelot
+
+def extract_with_camelot(pdf_path):
+    """Use Camelot for more precise extraction"""
+    try:
+        # Detect and extract tables
+        tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')
+        
+        html_output = []
+        for i, table in enumerate(tables):
+            # Generate HTML with styles
+            html = f"""
+            <table class="extracted-table" style="border-collapse: collapse; width: 100%; margin: 20px 0;">
+                <thead>
+                    <tr>
+                        {''.join([f'<th style="border: 1px solid #000; padding: 8px; background: #f0f0f0;">{cell}</th>' for cell in table.df.iloc[0]])}
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            
+            for _, row in table.df.iloc[1:].iterrows():
+                html += '<tr>'
+                for cell in row:
+                    html += f'<td style="border: 1px solid #000; padding: 8px;">{cell}</td>'
+                html += '</tr>'
+            
+            html += """
+                </tbody>
+            </table>
+            """
+            html_output.append(html)
+        
+        return '\n'.join(html_output)
+        
+    except Exception as e:
+        return f"<p>Camelot Error: {str(e)}</p>"
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("<p>Usage: extract_tables_camelot.py <pdf_file></p>")
+        sys.exit(1)
+    
+    pdf_file = sys.argv[1]
+    html = extract_with_camelot(pdf_file)
+    print(html)
+PYTHON;
+
+        file_put_contents(base_path('extract_tables_camelot.py'), $camelotScript);
+        chmod(base_path('extract_tables_camelot.py'), 0755);
+        
+        $this->info('  ✓ Python extraction scripts created');
+    }
+
+    /**
+     * Install PyMuPDF specifically
+     */
+    protected function installPyMuPDF(): void
+    {
+        $this->info('');
+        $this->info('Installing PyMuPDF for advanced PDF operations...');
+        
+        // Check if Python3 and pip3 are available
+        if (!$this->commandExists('python3') || !$this->commandExists('pip3')) {
+            $this->warn('Python3 or pip3 not found. Installing Python first...');
+            $this->installPythonTools();
+        }
+        
+        // Install PyMuPDF and related packages
+        $this->info('Installing PyMuPDF and dependencies...');
+        $packages = 'PyMuPDF beautifulsoup4 lxml Pillow reportlab';
+        
+        $process = Process::fromShellCommandline("pip3 install $packages --break-system-packages");
+        $process->setTimeout(300);
+        $process->run();
+        
+        if (!$process->isSuccessful()) {
+            // Try user installation
+            $process = Process::fromShellCommandline("pip3 install --user $packages");
+            $process->setTimeout(300);
+            $process->run();
+        }
+        
+        if (!$process->isSuccessful()) {
+            // Try with sudo for system-wide installation
+            $this->info('Trying with sudo...');
+            $process = Process::fromShellCommandline("sudo pip3 install $packages --break-system-packages");
+            $process->setTimeout(300);
+            $process->run();
+        }
+        
+        if ($process->isSuccessful()) {
+            $this->info('  ✓ PyMuPDF and BeautifulSoup4 installed successfully');
+            
+            // Create PyMuPDF extraction script
+            $this->createPyMuPDFScript();
+        } else {
+            $this->warn('Failed to install PyMuPDF. You can install manually with:');
+            $this->info("  sudo pip3 install $packages --break-system-packages");
+        }
+    }
+    
+    /**
+     * Create PyMuPDF extraction script
+     */
+    protected function createPyMuPDFScript(): void
+    {
+        $script = <<<'PYTHON'
+#!/usr/bin/env python3
+import sys
+import fitz  # PyMuPDF
+import json
+from pathlib import Path
+
+def extract_text_with_layout(pdf_path):
+    """Extract text from PDF preserving layout"""
+    try:
+        doc = fitz.open(pdf_path)
+        full_text = []
+        
+        for page_num, page in enumerate(doc, 1):
+            # Extract text with layout preservation
+            text = page.get_text("text")
+            full_text.append(f"--- Page {page_num} ---\n{text}")
+        
+        doc.close()
+        return '\n'.join(full_text)
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+def extract_images(pdf_path, output_dir):
+    """Extract all images from PDF"""
+    try:
+        doc = fitz.open(pdf_path)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(exist_ok=True)
+        
+        image_count = 0
+        for page_num, page in enumerate(doc):
+            image_list = page.get_images()
+            
+            for img_index, img in enumerate(image_list):
+                xref = img[0]
+                pix = fitz.Pixmap(doc, xref)
+                
+                if pix.n - pix.alpha < 4:  # GRAY or RGB
+                    image_path = output_dir / f"page{page_num}_img{img_index}.png"
+                    pix.save(str(image_path))
+                    image_count += 1
+                else:  # CMYK
+                    pix1 = fitz.Pixmap(fitz.csRGB, pix)
+                    image_path = output_dir / f"page{page_num}_img{img_index}.png"
+                    pix1.save(str(image_path))
+                    pix1 = None
+                    image_count += 1
+                pix = None
+        
+        doc.close()
+        return f"Extracted {image_count} images"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+def remove_text_keep_images(pdf_path, output_path):
+    """Remove text from PDF while keeping images and backgrounds"""
+    try:
+        doc = fitz.open(pdf_path)
+        
+        for page in doc:
+            # Get all text instances
+            text_instances = page.get_text("dict")
+            
+            # Redact each text block
+            for block in text_instances["blocks"]:
+                if block["type"] == 0:  # Text block
+                    for line in block["lines"]:
+                        for span in line["spans"]:
+                            # Create rectangle for text
+                            rect = fitz.Rect(span["bbox"])
+                            # Add redaction annotation
+                            page.add_redact_annot(rect)
+            
+            # Apply redactions (removes text)
+            page.apply_redactions()
+        
+        # Save the modified PDF
+        doc.save(output_path)
+        doc.close()
+        return f"Text removed, saved to {output_path}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: pymupdf_tools.py <command> <pdf_file> [options]")
+        print("Commands: extract_text, extract_images, remove_text")
+        sys.exit(1)
+    
+    command = sys.argv[1]
+    pdf_file = sys.argv[2] if len(sys.argv) > 2 else None
+    
+    if command == "extract_text" and pdf_file:
+        print(extract_text_with_layout(pdf_file))
+    elif command == "extract_images" and pdf_file:
+        output_dir = sys.argv[3] if len(sys.argv) > 3 else "./extracted_images"
+        print(extract_images(pdf_file, output_dir))
+    elif command == "remove_text" and pdf_file:
+        output_file = sys.argv[3] if len(sys.argv) > 3 else "output_no_text.pdf"
+        print(remove_text_keep_images(pdf_file, output_file))
+    else:
+        print("Invalid command or missing arguments")
+PYTHON;
+
+        file_put_contents(base_path('pymupdf_tools.py'), $script);
+        chmod(base_path('pymupdf_tools.py'), 0755);
+        
+        $this->info('  ✓ PyMuPDF extraction script created');
+    }
+    
+    /**
+     * Clean unused dependencies
+     */
+    protected function cleanUnusedDependencies(): void
+    {
+        $this->info('');
+        $this->info('Cleaning unused dependencies...');
+        
+        // Remove unused Composer packages
+        $unusedPackages = [
+            'laravel/sail',  // Not needed in production
+            'laravel/pail',  // Development tool
+        ];
+        
+        if ($this->confirm('Remove unused Composer packages?', true)) {
+            foreach ($unusedPackages as $package) {
+                $this->info("Removing $package...");
+                $process = Process::fromShellCommandline("composer remove $package --no-interaction");
+                $process->setTimeout(300);
+                $process->run();
+                
+                if ($process->isSuccessful()) {
+                    $this->info("  ✓ Removed $package");
+                }
+            }
+            
+            // Optimize autoloader
+            $this->info('Optimizing Composer autoloader...');
+            $process = Process::fromShellCommandline('composer dump-autoload --optimize');
+            $process->setTimeout(300);
+            $process->run();
+            
+            if ($process->isSuccessful()) {
+                $this->info('  ✓ Composer autoloader optimized');
+            }
+        }
+        
+        // Clean npm packages
+        if ($this->confirm('Clean and reinstall npm packages?', true)) {
+            $this->info('Cleaning npm packages...');
+            
+            // Remove node_modules and package-lock
+            $process = Process::fromShellCommandline('rm -rf node_modules package-lock.json');
+            $process->run();
+            
+            // Reinstall with production flag
+            $this->info('Reinstalling npm packages (production only)...');
+            $process = Process::fromShellCommandline('npm install --production');
+            $process->setTimeout(600);
+            $process->run();
+            
+            if ($process->isSuccessful()) {
+                $this->info('  ✓ NPM packages cleaned and reinstalled');
+            }
+            
+            // Audit and fix vulnerabilities
+            $this->info('Checking for vulnerabilities...');
+            $process = Process::fromShellCommandline('npm audit fix');
+            $process->setTimeout(300);
+            $process->run();
+            
+            if ($process->isSuccessful()) {
+                $this->info('  ✓ Vulnerabilities fixed');
+            }
+        }
+        
+        // Clear all caches
+        $this->info('Clearing all caches...');
+        $cacheCommands = [
+            'config:clear',
+            'cache:clear',
+            'route:clear',
+            'view:clear',
+            'event:clear'
+        ];
+        
+        foreach ($cacheCommands as $command) {
+            Artisan::call($command);
+            $this->info("  ✓ $command executed");
+        }
+        
+        $this->info('  ✓ Cleanup completed');
+    }
+    
+    /**
+     * Check if a command exists
+     */
+    protected function commandExists(string $command): bool
+    {
+        $process = Process::fromShellCommandline("which $command");
+        $process->run();
+        return $process->isSuccessful();
+    }
+    
     /**
      * Detect operating system
      */

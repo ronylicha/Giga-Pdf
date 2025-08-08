@@ -15,7 +15,9 @@ class DocumentPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->hasPermission('documents.view');
+        return $user->hasPermissionTo('view documents') || 
+               $user->hasRole(['tenant-admin', 'manager', 'editor', 'viewer']) ||
+               $user->isSuperAdmin();
     }
 
     /**
@@ -25,7 +27,9 @@ class DocumentPolicy
     {
         // User can view if they own it or have permission
         return $user->id === $document->user_id || 
-               $user->hasPermission('documents.view');
+               $user->hasPermissionTo('view documents') ||
+               $user->hasRole(['tenant-admin', 'manager']) ||
+               $user->isSuperAdmin();
     }
 
     /**
@@ -33,7 +37,9 @@ class DocumentPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasPermission('documents.create');
+        return $user->hasPermissionTo('create documents') ||
+               $user->hasRole(['tenant-admin', 'manager', 'editor']) ||
+               $user->isSuperAdmin();
     }
 
     /**
@@ -42,8 +48,19 @@ class DocumentPolicy
     public function update(User $user, Document $document): bool
     {
         // User can update if they own it and have permission, or are admin
-        return ($user->id === $document->user_id && $user->hasPermission('documents.update')) ||
-               $user->hasRole('tenant_admin') ||
+        return ($user->id === $document->user_id && ($user->hasPermissionTo('edit documents') || $user->hasRole(['editor', 'manager']))) ||
+               $user->hasRole('tenant-admin') ||
+               $user->isSuperAdmin();
+    }
+
+    /**
+     * Determine whether the user can edit the document.
+     */
+    public function edit(User $user, Document $document): bool
+    {
+        // User can edit if they own it and have permission, or are admin
+        return ($user->id === $document->user_id && ($user->hasPermissionTo('edit documents') || $user->hasRole(['editor', 'manager']))) ||
+               $user->hasRole('tenant-admin') ||
                $user->isSuperAdmin();
     }
 
@@ -53,8 +70,8 @@ class DocumentPolicy
     public function delete(User $user, Document $document): bool
     {
         // User can delete if they own it and have permission, or are admin
-        return ($user->id === $document->user_id && $user->hasPermission('documents.delete')) ||
-               $user->hasRole('tenant_admin') ||
+        return ($user->id === $document->user_id && ($user->hasPermissionTo('delete documents') || $user->hasRole(['editor', 'manager']))) ||
+               $user->hasRole('tenant-admin') ||
                $user->isSuperAdmin();
     }
 
@@ -64,8 +81,9 @@ class DocumentPolicy
     public function share(User $user, Document $document): bool
     {
         // User can share if they own it and have permission
-        return $user->id === $document->user_id && 
-               $user->hasPermission('documents.share');
+        return ($user->id === $document->user_id && $user->hasPermissionTo('share documents')) ||
+               $user->hasRole(['tenant-admin', 'manager']) ||
+               $user->isSuperAdmin();
     }
 
     /**
@@ -73,9 +91,12 @@ class DocumentPolicy
      */
     public function download(User $user, Document $document): bool
     {
-        // User can download if they own it or have permission
+        // User can download if they own it or have permission  
+        // Note: download permission doesn't exist, using view permission
         return $user->id === $document->user_id || 
-               $user->hasPermission('documents.download');
+               $user->hasPermissionTo('view documents') ||
+               $user->hasRole(['tenant-admin', 'manager', 'editor', 'viewer']) ||
+               $user->isSuperAdmin();
     }
 
     /**
@@ -84,8 +105,9 @@ class DocumentPolicy
     public function convert(User $user, Document $document): bool
     {
         // User can convert if they own it and have permission
-        return $user->id === $document->user_id && 
-               $user->hasPermission('documents.convert');
+        return ($user->id === $document->user_id && $user->hasPermissionTo('convert documents')) ||
+               $user->hasRole(['tenant-admin', 'manager', 'editor']) ||
+               $user->isSuperAdmin();
     }
 
     /**

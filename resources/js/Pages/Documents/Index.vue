@@ -167,6 +167,15 @@
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m9.032 4.026a3 3 0 10-5.414-2.642m5.414 2.642a3 3 0 01-5.414-2.642m0 0a3 3 0 00-5.414 2.642m5.414-2.642l-5.414-2.642" />
                                         </svg>
                                     </button>
+                                    <button
+                                        @click="deleteDocument(document)"
+                                        class="p-2 bg-white rounded-full hover:bg-red-100 transition"
+                                        title="Supprimer"
+                                    >
+                                        <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
 
@@ -191,19 +200,44 @@
                             <!-- Actions -->
                             <div class="mt-4 flex justify-between">
                                 <Link
-                                    :href="route('documents.edit', document.id)"
+                                    :href="route('documents.html-editor', document.id)"
                                     class="text-indigo-600 hover:text-indigo-900 font-medium text-sm"
                                 >
                                     Éditer
                                 </Link>
-                                <button
-                                    @click="showMoreOptions(document)"
-                                    class="text-gray-500 hover:text-gray-700"
-                                >
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                                    </svg>
-                                </button>
+                                <div class="relative">
+                                    <button
+                                        @click="toggleDropdown(document.id)"
+                                        class="text-gray-500 hover:text-gray-700"
+                                    >
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                        </svg>
+                                    </button>
+                                    <div
+                                        v-if="activeDropdown === document.id"
+                                        class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10"
+                                    >
+                                        <button
+                                            @click="shareDocument(document)"
+                                            class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-md"
+                                        >
+                                            <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m9.032 4.026a3 3 0 10-5.414-2.642m5.414 2.642a3 3 0 01-5.414-2.642m0 0a3 3 0 00-5.414 2.642m5.414-2.642l-5.414-2.642" />
+                                            </svg>
+                                            Partager
+                                        </button>
+                                        <button
+                                            @click="deleteDocument(document)"
+                                            class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 rounded-b-md"
+                                        >
+                                            <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                            Supprimer
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -290,7 +324,7 @@
                                             </svg>
                                         </button>
                                         <Link
-                                            :href="route('documents.edit', document.id)"
+                                            :href="route('documents.html-editor', document.id)"
                                             class="text-green-600 hover:text-green-900"
                                             title="Éditer"
                                         >
@@ -372,6 +406,76 @@
                     </div>
                 </div>
 
+                <!-- Share Modal -->
+                <Modal :show="showShareModal" @close="showShareModal = false">
+                    <div class="p-6">
+                        <h3 class="text-lg font-semibold mb-4">Partager le document</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Type de partage</label>
+                                <select v-model="shareType" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                    <option value="link">Lien public</option>
+                                    <option value="email">Par email</option>
+                                </select>
+                            </div>
+                            
+                            <div v-if="shareType === 'email'">
+                                <label class="block text-sm font-medium text-gray-700">Email du destinataire</label>
+                                <input
+                                    v-model="shareEmail"
+                                    type="email"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                                    placeholder="email@example.com"
+                                >
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Date d'expiration (optionnel)</label>
+                                <input
+                                    v-model="shareExpiration"
+                                    type="datetime-local"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                                >
+                            </div>
+                            
+                            <div>
+                                <label class="flex items-center">
+                                    <input
+                                        v-model="shareWithPassword"
+                                        type="checkbox"
+                                        class="rounded border-gray-300 text-indigo-600 shadow-sm"
+                                    >
+                                    <span class="ml-2 text-sm text-gray-700">Protéger avec un mot de passe</span>
+                                </label>
+                            </div>
+                            
+                            <div v-if="shareWithPassword">
+                                <label class="block text-sm font-medium text-gray-700">Mot de passe</label>
+                                <input
+                                    v-model="sharePassword"
+                                    type="password"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                                    placeholder="Entrez un mot de passe"
+                                >
+                            </div>
+                        </div>
+                        <div class="mt-6 flex justify-end space-x-2">
+                            <button
+                                @click="showShareModal = false"
+                                class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                @click="createShare"
+                                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                            >
+                                Créer le lien
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+
                 <!-- Pagination -->
                 <div v-if="documents.links && documents.links.length > 3" class="mt-6">
                     <nav class="flex items-center justify-between">
@@ -443,6 +547,7 @@
 import { ref, computed, watch } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import Modal from '@/Components/Modal.vue';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -454,6 +559,16 @@ const props = defineProps({
 const viewMode = ref('grid');
 const selectedDocuments = ref([]);
 const showConvertModal = ref(false);
+const activeDropdown = ref(null);
+
+// Share modal variables
+const showShareModal = ref(false);
+const selectedShareDocument = ref(null);
+const shareType = ref('link');
+const shareEmail = ref('');
+const shareExpiration = ref('');
+const shareWithPassword = ref(false);
+const sharePassword = ref('');
 
 const filters = ref({
     search: props.filters?.search || '',
@@ -531,20 +646,71 @@ const getFileTypeBadgeClass = (extension) => {
 };
 
 const previewDocument = (document) => {
-    window.open(route('documents.preview', document.id), '_blank');
+    window.open(route('documents.show', document.id), '_blank');
 };
 
 const downloadDocument = (document) => {
     window.location.href = route('documents.download', document.id);
 };
 
+const toggleDropdown = (documentId) => {
+    if (activeDropdown.value === documentId) {
+        activeDropdown.value = null;
+    } else {
+        activeDropdown.value = documentId;
+    }
+};
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.relative')) {
+        activeDropdown.value = null;
+    }
+});
+
 const shareDocument = (document) => {
-    router.post(route('documents.share', document.id));
+    activeDropdown.value = null;
+    selectedShareDocument.value = document;
+    // Reset share form
+    shareType.value = 'link';
+    shareEmail.value = '';
+    shareExpiration.value = '';
+    shareWithPassword.value = false;
+    sharePassword.value = '';
+    // Open modal
+    showShareModal.value = true;
+};
+
+const createShare = () => {
+    if (!selectedShareDocument.value) return;
+    
+    router.post(route('documents.share', selectedShareDocument.value.id), {
+        type: shareType.value,
+        email: shareEmail.value,
+        expires_at: shareExpiration.value,
+        password: shareWithPassword.value ? sharePassword.value : null,
+    }, {
+        onSuccess: () => {
+            showShareModal.value = false;
+            alert('Lien de partage créé avec succès!');
+        },
+        onError: () => {
+            alert('Erreur lors de la création du lien de partage');
+        }
+    });
 };
 
 const deleteDocument = (document) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer ce document ?')) {
-        router.delete(route('documents.destroy', document.id));
+    activeDropdown.value = null;
+    if (confirm(`Êtes-vous sûr de vouloir supprimer "${document.original_name}" ?`)) {
+        router.delete(route('documents.destroy', document.id), {
+            onSuccess: () => {
+                // Document will be removed from list automatically
+            },
+            onError: () => {
+                alert('Erreur lors de la suppression du document');
+            }
+        });
     }
 };
 
@@ -557,19 +723,59 @@ const toggleSelectAll = (event) => {
 };
 
 const bulkDownload = () => {
-    // Implementation for bulk download
-    console.log('Downloading:', selectedDocuments.value);
+    if (selectedDocuments.value.length === 0) {
+        alert('Veuillez sélectionner au moins un document');
+        return;
+    }
+    
+    // Create a form to submit for download
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = route('documents.bulk-download');
+    
+    // Add CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (csrfToken) {
+        const tokenInput = document.createElement('input');
+        tokenInput.type = 'hidden';
+        tokenInput.name = '_token';
+        tokenInput.value = csrfToken;
+        form.appendChild(tokenInput);
+    }
+    
+    // Add document IDs
+    selectedDocuments.value.forEach(id => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'document_ids[]';
+        input.value = id;
+        form.appendChild(input);
+    });
+    
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
 };
 
 const bulkDelete = () => {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer ${selectedDocuments.value.length} document(s) ?`)) {
-        // Implementation for bulk delete
-        console.log('Deleting:', selectedDocuments.value);
+    const count = selectedDocuments.value.length;
+    if (confirm(`Êtes-vous sûr de vouloir supprimer ${count} document(s) ?`)) {
+        // Send bulk delete request
+        router.post(route('documents.bulk-delete'), {
+            document_ids: selectedDocuments.value
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                // Show success message
+                alert(`${count} document(s) supprimé(s) avec succès`);
+                selectedDocuments.value = [];
+            },
+            onError: (errors) => {
+                console.error('Erreur lors de la suppression:', errors);
+                alert('Erreur lors de la suppression des documents');
+            }
+        });
     }
 };
 
-const showMoreOptions = (document) => {
-    // Implementation for more options menu
-    console.log('More options for:', document);
-};
 </script>

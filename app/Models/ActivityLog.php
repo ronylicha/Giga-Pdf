@@ -112,7 +112,7 @@ class ActivityLog extends Model
     {
         if ($this->causer) {
             if ($this->causer instanceof User) {
-                return $this->causer->getDisplayName();
+                return $this->causer->name;
             }
             
             return class_basename($this->causer);

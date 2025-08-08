@@ -7,15 +7,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, HasRoles;
 
     /**
      * The attributes that are mass assignable.
@@ -25,7 +22,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'password',
         'tenant_id',
-        'role_id',
         'two_factor_secret',
         'two_factor_recovery_codes',
         'two_factor_confirmed_at',
@@ -34,6 +30,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'preferences',
         'last_login_at',
         'last_login_ip',
+        'two_factor_required',
+        'password_changed_at',
     ];
 
     /**
@@ -54,416 +52,149 @@ class User extends Authenticatable implements MustVerifyEmail
         'password' => 'hashed',
         'two_factor_confirmed_at' => 'datetime',
         'last_login_at' => 'datetime',
-        'is_active' => 'boolean',
+        'password_changed_at' => 'datetime',
         'preferences' => 'array',
         'two_factor_recovery_codes' => 'array',
+        'is_active' => 'boolean',
+        'two_factor_required' => 'boolean',
     ];
-    
+
     /**
-     * Default attributes
-     */
-    protected $attributes = [
-        'is_active' => true,
-        'preferences' => '{}',
-    ];
-    
-    /**
-     * Boot method
-     */
-    protected static function boot()
-    {
-        parent::boot();
-        
-        static::creating(function ($user) {
-            // Assigner au tenant de l'utilisateur créateur si disponible
-            if (!$user->tenant_id && auth()->check() && auth()->user()->tenant_id) {
-                $user->tenant_id = auth()->user()->tenant_id;
-            }
-        });
-    }
-    
-    /**
-     * Get the tenant relationship
+     * Get the tenant that owns the user
      */
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
     }
-    
+
     /**
-     * Get documents relationship
+     * Get user's documents
      */
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class);
     }
-    
+
     /**
-     * Get conversions relationship
+     * Get user's conversions
      */
     public function conversions(): HasMany
     {
         return $this->hasMany(Conversion::class);
     }
-    
+
     /**
-     * Get shares created by this user
+     * Get user's shares
      */
     public function shares(): HasMany
     {
         return $this->hasMany(Share::class, 'shared_by');
     }
-    
+
     /**
-     * Get shares received by this user
+     * Get shares with this user
      */
-    public function receivedShares(): HasMany
+    public function sharedWithMe(): HasMany
     {
         return $this->hasMany(Share::class, 'shared_with');
     }
-    
+
     /**
-     * Get activity logs caused by this user
+     * Get user's activity logs
      */
     public function activities(): HasMany
     {
-        return $this->hasMany(ActivityLog::class, 'causer_id');
+        return $this->hasMany(ActivityLog::class);
     }
-    
+
+    /**
+     * Check if user is super admin
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasRole('super-admin');
+    }
+
+    /**
+     * Check if user is tenant admin
+     */
+    public function isTenantAdmin(): bool
+    {
+        return $this->hasRole('tenant-admin');
+    }
+
+    /**
+     * Check if user is manager
+     */
+    public function isManager(): bool
+    {
+        return $this->hasRole('manager');
+    }
+
+    /**
+     * Check if user is editor
+     */
+    public function isEditor(): bool
+    {
+        return $this->hasRole('editor');
+    }
+
+    /**
+     * Check if user is viewer
+     */
+    public function isViewer(): bool
+    {
+        return $this->hasRole('viewer');
+    }
+
     /**
      * Check if 2FA is enabled
      */
     public function hasTwoFactorEnabled(): bool
     {
-        return !is_null($this->two_factor_secret) && !is_null($this->two_factor_confirmed_at);
+        return !is_null($this->two_factor_secret);
     }
-    
+
     /**
-     * Enable two factor authentication
+     * Check if 2FA is confirmed
      */
-    public function enableTwoFactor(string $secret, array $recoveryCodes): void
+    public function hasTwoFactorConfirmed(): bool
     {
-        $this->update([
-            'two_factor_secret' => encrypt($secret),
-            'two_factor_recovery_codes' => encrypt(json_encode($recoveryCodes)),
-            'two_factor_confirmed_at' => now(),
-        ]);
+        return !is_null($this->two_factor_confirmed_at);
     }
-    
+
     /**
-     * Disable two factor authentication
+     * Check if user account is active
      */
-    public function disableTwoFactor(): void
+    public function isActive(): bool
     {
-        $this->update([
-            'two_factor_secret' => null,
-            'two_factor_recovery_codes' => null,
-            'two_factor_confirmed_at' => null,
-        ]);
+        return $this->is_active;
     }
-    
+
     /**
-     * Generate new recovery codes
+     * Check if user account is suspended
      */
-    public function generateRecoveryCodes(): array
+    public function isSuspended(): bool
     {
-        $codes = collect(range(1, 8))->map(function () {
-            return Str::random(10) . '-' . Str::random(10);
-        })->toArray();
-        
-        $this->update([
-            'two_factor_recovery_codes' => encrypt(json_encode($codes)),
-        ]);
-        
-        return $codes;
+        return !$this->is_active;
     }
-    
+
     /**
-     * Verify a recovery code
+     * Suspend user account
      */
-    public function verifyRecoveryCode(string $code): bool
+    public function suspend(): void
     {
-        if (!$this->two_factor_recovery_codes) {
-            return false;
-        }
-        
-        $codes = json_decode(decrypt($this->two_factor_recovery_codes), true);
-        
-        if (in_array($code, $codes)) {
-            // Remove the used code
-            $codes = array_diff($codes, [$code]);
-            $this->update([
-                'two_factor_recovery_codes' => encrypt(json_encode(array_values($codes))),
-            ]);
-            return true;
-        }
-        
-        return false;
+        $this->update(['is_active' => false]);
     }
-    
+
     /**
-     * Get the roles relationship
+     * Activate user account
      */
-    public function roles(): BelongsToMany
+    public function activate(): void
     {
-        return $this->belongsToMany(Role::class, 'user_roles')
-            ->withPivot('tenant_id', 'assigned_at', 'assigned_by')
-            ->withTimestamps();
+        $this->update(['is_active' => true]);
     }
-    
-    /**
-     * Get the primary role for the current tenant
-     */
-    public function role(): ?Role
-    {
-        $roleId = Cache::remember("user_{$this->id}_role_{$this->tenant_id}", 3600, function () {
-            return $this->roles()
-                ->wherePivot('tenant_id', $this->tenant_id)
-                ->orderBy('level')
-                ->first();
-        });
-        
-        return $roleId;
-    }
-    
-    /**
-     * Assign a role to the user
-     */
-    public function assignRole(Role|string $role, ?int $tenantId = null): void
-    {
-        if (is_string($role)) {
-            $role = Role::where('slug', $role)
-                ->where(function ($q) use ($tenantId) {
-                    $q->where('tenant_id', $tenantId)
-                      ->orWhereNull('tenant_id');
-                })
-                ->firstOrFail();
-        }
-        
-        // For super admin role, always use null tenant_id
-        if ($role->slug === Role::SUPER_ADMIN) {
-            $tenantId = null;
-        } else {
-            $tenantId = $tenantId ?? $this->tenant_id;
-        }
-        
-        $this->roles()->attach($role->id, [
-            'tenant_id' => $tenantId,
-            'assigned_at' => now(),
-            'assigned_by' => auth()->id(),
-        ]);
-        
-        $this->clearPermissionCache();
-    }
-    
-    /**
-     * Remove a role from the user
-     */
-    public function removeRole(Role|string $role, ?int $tenantId = null): void
-    {
-        if (is_string($role)) {
-            $role = Role::where('slug', $role)->first();
-            if (!$role) return;
-        }
-        
-        $this->roles()->wherePivot('tenant_id', $tenantId ?? $this->tenant_id)
-            ->detach($role->id);
-        
-        $this->clearPermissionCache();
-    }
-    
-    /**
-     * Sync roles for the user
-     */
-    public function syncRoles(array $roleIds, ?int $tenantId = null): void
-    {
-        $tenantId = $tenantId ?? $this->tenant_id;
-        
-        // Remove existing roles for this tenant
-        $this->roles()->wherePivot('tenant_id', $tenantId)->detach();
-        
-        // Attach new roles
-        foreach ($roleIds as $roleId) {
-            $this->roles()->attach($roleId, [
-                'tenant_id' => $tenantId,
-                'assigned_at' => now(),
-                'assigned_by' => auth()->id(),
-            ]);
-        }
-        
-        $this->clearPermissionCache();
-    }
-    
-    /**
-     * Check if user has a specific role
-     */
-    public function hasRole(string $roleSlug, ?int $tenantId = null): bool
-    {
-        // For super admin, check with null tenant_id
-        if ($roleSlug === Role::SUPER_ADMIN) {
-            return Cache::remember("user_{$this->id}_has_role_{$roleSlug}_null", 3600, function () use ($roleSlug) {
-                return $this->roles()
-                    ->where('slug', $roleSlug)
-                    ->wherePivot('tenant_id', null)
-                    ->exists();
-            });
-        }
-        
-        $tenantId = $tenantId ?? $this->tenant_id;
-        
-        return Cache::remember("user_{$this->id}_has_role_{$roleSlug}_{$tenantId}", 3600, function () use ($roleSlug, $tenantId) {
-            return $this->roles()
-                ->where('slug', $roleSlug)
-                ->wherePivot('tenant_id', $tenantId)
-                ->exists();
-        });
-    }
-    
-    /**
-     * Check if user has any of the given roles
-     */
-    public function hasAnyRole(array $roles, ?int $tenantId = null): bool
-    {
-        foreach ($roles as $role) {
-            if ($this->hasRole($role, $tenantId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * Check if user has all of the given roles
-     */
-    public function hasAllRoles(array $roles, ?int $tenantId = null): bool
-    {
-        foreach ($roles as $role) {
-            if (!$this->hasRole($role, $tenantId)) {
-                return false;
-            }
-        }
-        return true;
-    }
-    
-    /**
-     * Check if user has a specific permission
-     */
-    public function hasPermission(string $permission, ?int $tenantId = null): bool
-    {
-        $tenantId = $tenantId ?? $this->tenant_id;
-        
-        return Cache::remember("user_{$this->id}_permission_{$permission}_{$tenantId}", 3600, function () use ($permission, $tenantId) {
-            $roles = $this->roles()->wherePivot('tenant_id', $tenantId)->get();
-            
-            foreach ($roles as $role) {
-                if ($role->hasPermission($permission)) {
-                    return true;
-                }
-            }
-            
-            return false;
-        });
-    }
-    
-    /**
-     * Check if user has any of the given permissions
-     */
-    public function hasAnyPermission(array $permissions, ?int $tenantId = null): bool
-    {
-        foreach ($permissions as $permission) {
-            if ($this->hasPermission($permission, $tenantId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * Check if user has all of the given permissions
-     */
-    public function hasAllPermissions(array $permissions, ?int $tenantId = null): bool
-    {
-        foreach ($permissions as $permission) {
-            if (!$this->hasPermission($permission, $tenantId)) {
-                return false;
-            }
-        }
-        return true;
-    }
-    
-    /**
-     * Get all permissions for the user
-     */
-    public function getPermissions(?int $tenantId = null): array
-    {
-        $tenantId = $tenantId ?? $this->tenant_id;
-        
-        return Cache::remember("user_{$this->id}_all_permissions_{$tenantId}", 3600, function () use ($tenantId) {
-            $permissions = [];
-            $roles = $this->roles()->wherePivot('tenant_id', $tenantId)->get();
-            
-            foreach ($roles as $role) {
-                $permissions = array_merge($permissions, $role->permissions ?? []);
-            }
-            
-            return array_unique($permissions);
-        });
-    }
-    
-    /**
-     * Clear permission cache for the user
-     */
-    public function clearPermissionCache(): void
-    {
-        Cache::forget("user_{$this->id}_role_{$this->tenant_id}");
-        
-        // Clear all permission caches for this user
-        $patterns = [
-            "user_{$this->id}_has_role_*",
-            "user_{$this->id}_permission_*",
-            "user_{$this->id}_all_permissions_*",
-        ];
-        
-        foreach ($patterns as $pattern) {
-            // Note: This requires a cache driver that supports pattern deletion
-            // For Redis, you might need to use Cache::getRedis()->keys() and delete
-        }
-    }
-    
-    /**
-     * Check if user is a super admin
-     */
-    public function isSuperAdmin(): bool
-    {
-        return $this->hasRole(Role::SUPER_ADMIN);
-    }
-    
-    /**
-     * Check if user is a tenant admin
-     */
-    public function isTenantAdmin(): bool
-    {
-        // Check for generic tenant_admin or tenant-specific role
-        if ($this->hasRole(Role::TENANT_ADMIN)) {
-            return true;
-        }
-        
-        // Check for tenant-specific role
-        if ($this->tenant_id) {
-            return $this->hasRole(Role::TENANT_ADMIN . '_' . $this->tenant_id);
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Check if user can access a specific tenant
-     */
-    public function canAccessTenant(Tenant $tenant): bool
-    {
-        return $this->tenant_id === $tenant->id || $this->isSuperAdmin();
-    }
-    
+
     /**
      * Check if user can manage another user
      */
@@ -474,80 +205,63 @@ class User extends Authenticatable implements MustVerifyEmail
             return true;
         }
         
-        // Must be in same tenant
+        // Must be in the same tenant
         if ($this->tenant_id !== $targetUser->tenant_id) {
             return false;
         }
         
-        // Check if user has permission to manage users
-        if (!$this->hasPermission('users.update')) {
-            return false;
+        // Tenant admin can manage all users in their tenant
+        if ($this->isTenantAdmin()) {
+            return !$targetUser->isTenantAdmin(); // Cannot manage other tenant admins
         }
         
-        // Check role hierarchy
-        $userRole = $this->role();
-        $targetRole = $targetUser->role();
-        
-        if ($userRole && $targetRole) {
-            return $userRole->canManage($targetRole);
+        // Manager can manage editors and viewers
+        if ($this->isManager()) {
+            return $targetUser->isEditor() || $targetUser->isViewer();
         }
         
         return false;
     }
-    
-    /**
-     * Get user's storage usage
-     */
-    public function getStorageUsage(): int
-    {
-        return $this->documents()->sum('size');
-    }
-    
+
     /**
      * Update last login information
      */
-    public function updateLastLogin(?string $ip = null): void
+    public function updateLastLogin(): void
     {
         $this->update([
             'last_login_at' => now(),
-            'last_login_ip' => $ip,
+            'last_login_ip' => request()->ip(),
         ]);
     }
-    
+
     /**
-     * Get user preference
+     * Generate two factor recovery codes
      */
-    public function getPreference(string $key, $default = null)
+    public function generateTwoFactorRecoveryCodes(): array
     {
-        return data_get($this->preferences, $key, $default);
+        $codes = [];
+        
+        for ($i = 0; $i < 8; $i++) {
+            $codes[] = strtoupper(bin2hex(random_bytes(4)));
+        }
+        
+        $this->update([
+            'two_factor_recovery_codes' => encrypt($codes)
+        ]);
+        
+        return $codes;
     }
-    
+
     /**
-     * Set user preference
+     * Check if password needs to be changed
      */
-    public function setPreference(string $key, $value): bool
+    public function needsPasswordChange(): bool
     {
-        $preferences = $this->preferences ?? [];
-        data_set($preferences, $key, $value);
-        return $this->update(['preferences' => $preferences]);
-    }
-    
-    /**
-     * Check if user account is active
-     */
-    public function isActive(): bool
-    {
-        return $this->is_active && 
-               $this->tenant && 
-               $this->tenant->is_active && 
-               $this->tenant->isSubscriptionActive();
-    }
-    
-    /**
-     * Get display name
-     */
-    public function getDisplayName(): string
-    {
-        return $this->name ?: explode('@', $this->email)[0];
+        if (!$this->password_changed_at) {
+            return true;
+        }
+        
+        // Password expires after 90 days
+        return $this->password_changed_at->lt(now()->subDays(90));
     }
 }

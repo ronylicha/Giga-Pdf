@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\TenantPermissionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -74,16 +75,23 @@ class CreateTenant extends Command
             
             $this->info("✓ Tenant '{$name}' created successfully with ID: {$tenant->id}");
             
+            // Créer les rôles et permissions pour ce tenant
+            $permissionService = new TenantPermissionService();
+            $permissionService->createTenantRolesAndPermissions($tenant);
+            $this->info("✓ Roles and permissions created for tenant");
+            
             // Créer l'utilisateur admin
             $adminUser = User::create([
                 'name' => 'Admin',
                 'email' => $adminEmail,
                 'password' => Hash::make($adminPassword),
                 'tenant_id' => $tenant->id,
-                'role_id' => 1, // Admin role
                 'is_active' => true,
                 'email_verified_at' => now(),
             ]);
+            
+            // Assigner le rôle tenant-admin à l'utilisateur
+            $permissionService->assignRoleToUser($adminUser, 'tenant-admin', $tenant->id);
             
             $this->info("✓ Admin user created: {$adminEmail}");
             

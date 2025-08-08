@@ -14,16 +14,20 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            \App\Http\Middleware\SetPermissionTeamId::class,
+            \App\Http\Middleware\ImpersonationMiddleware::class,
         ]);
 
         // Register custom middleware aliases
         $middleware->alias([
             '2fa' => \App\Http\Middleware\Require2FA::class,
             'tenant' => \App\Http\Middleware\EnsureTenantSelected::class,
+            'require.tenant' => \App\Http\Middleware\RequireTenant::class,
             'storage.quota' => \App\Http\Middleware\CheckStorageQuota::class,
             'role' => \App\Http\Middleware\CheckRole::class,
             'permission' => \App\Http\Middleware\CheckPermission::class,
             'super.admin' => \App\Http\Middleware\SuperAdminOnly::class,
+            'prevent.impersonation' => \App\Http\Middleware\PreventImpersonation::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

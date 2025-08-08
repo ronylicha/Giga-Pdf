@@ -101,14 +101,14 @@ class TenantManagementController extends Controller
                 ->count(),
             'storage_used' => $tenant->getStorageUsed(),
             'storage_limit' => $tenant->max_storage_gb * 1024 * 1024 * 1024,
-            'last_activity' => DB::table('activity_logs')
+            'last_activity' => DB::table('activity_log')
                 ->where('tenant_id', $tenant->id)
                 ->latest('created_at')
                 ->first()?->created_at,
         ];
         
         // Get recent activity
-        $activities = DB::table('activity_logs')
+        $activities = DB::table('activity_log')
             ->where('tenant_id', $tenant->id)
             ->latest('created_at')
             ->limit(20)

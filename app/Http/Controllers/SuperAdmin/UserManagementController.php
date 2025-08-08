@@ -119,7 +119,7 @@ class UserManagementController extends Controller
         $user->load(['tenant', 'roles', 'documents', 'conversions']);
         
         // Get user activity
-        $activities = DB::table('activity_logs')
+        $activities = DB::table('activity_log')
             ->where('causer_id', $user->id)
             ->where('causer_type', User::class)
             ->latest('created_at')
@@ -135,7 +135,7 @@ class UserManagementController extends Controller
                 ->count(),
             'storage_used' => $user->documents()->sum('size'),
             'last_login' => $user->last_login_at,
-            'login_count' => DB::table('activity_logs')
+            'login_count' => DB::table('activity_log')
                 ->where('causer_id', $user->id)
                 ->where('event', 'login')
                 ->count(),

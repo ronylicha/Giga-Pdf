@@ -53,7 +53,6 @@ return new class extends Migration
                 ->on($tableNames['permissions'])
                 ->onDelete('cascade');
                 
-            // Primary key without tenant_id being required
             $table->primary(
                 [$pivotPermission, $columnNames['model_morph_key'], 'model_type'],
                 'model_has_permissions_permission_model_type_primary'
@@ -74,7 +73,6 @@ return new class extends Migration
                 ->on($tableNames['roles'])
                 ->onDelete('cascade');
                 
-            // Primary key without tenant_id being required
             $table->primary(
                 [$pivotRole, $columnNames['model_morph_key'], 'model_type'],
                 'model_has_roles_role_model_type_primary'

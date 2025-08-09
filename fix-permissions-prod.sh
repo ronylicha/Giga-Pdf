@@ -18,8 +18,25 @@ else
     APP_PATH="$(pwd)"
 fi
 
-WEB_USER="www-data"
-WEB_GROUP="www-data"
+# Détection automatique de l'environnement (Ploi, standard, etc.)
+if [ -d "/home/ploi" ] || id "ploi" &>/dev/null; then
+    # Environnement Ploi détecté
+    WEB_USER="ploi"
+    WEB_GROUP="ploi"
+    IS_PLOI=true
+    echo -e "${GREEN}Environnement Ploi.io détecté${NC}"
+elif [ -f "/etc/nginx/nginx.conf" ]; then
+    # Nginx standard avec www-data
+    WEB_USER="www-data"
+    WEB_GROUP="www-data"
+    IS_PLOI=false
+else
+    # Par défaut
+    WEB_USER="www-data"
+    WEB_GROUP="www-data"
+    IS_PLOI=false
+fi
+
 CURRENT_USER=$(whoami)
 
 echo -e "${GREEN}========================================${NC}"
@@ -192,21 +209,68 @@ else
     show_progress "SELinux non actif ou non installé"
 fi
 
-# 13. Build des assets frontend
-echo -e "${YELLOW}Étape 13: Build des assets frontend...${NC}"
+# 13. Gestion spécifique Ploi
+if [ "$IS_PLOI" = true ]; then
+    echo -e "${YELLOW}Étape 13: Configuration spécifique Ploi...${NC}"
+    
+    # Répertoire de déploiement Ploi
+    if [ -d "$APP_PATH/.deploy" ]; then
+        chown -R $WEB_USER:$WEB_GROUP $APP_PATH/.deploy
+        chmod -R 755 $APP_PATH/.deploy
+        show_progress "Répertoire .deploy configuré"
+    fi
+    
+    # Répertoire de releases Ploi
+    if [ -d "$APP_PATH/releases" ]; then
+        chown -R $WEB_USER:$WEB_GROUP $APP_PATH/releases
+        chmod -R 755 $APP_PATH/releases
+        show_progress "Répertoire releases configuré"
+    fi
+    
+    # Current symlink
+    if [ -L "$APP_PATH/current" ]; then
+        chown -h $WEB_USER:$WEB_GROUP $APP_PATH/current
+        show_progress "Lien symbolique current configuré"
+    fi
+    
+    # Fichiers Ploi spécifiques
+    if [ -f "$APP_PATH/.deploy-now" ]; then
+        chown $WEB_USER:$WEB_GROUP $APP_PATH/.deploy-now
+        chmod 644 $APP_PATH/.deploy-now
+        show_progress "Fichier .deploy-now configuré"
+    fi
+    
+    # Script de déploiement Ploi
+    if [ -f "$APP_PATH/deploy.sh" ]; then
+        chown $WEB_USER:$WEB_GROUP $APP_PATH/deploy.sh
+        chmod 755 $APP_PATH/deploy.sh
+        show_progress "Script deploy.sh configuré"
+    fi
+fi
+
+# 14. Build des assets frontend
+echo -e "${YELLOW}Étape 14: Build des assets frontend...${NC}"
 cd $APP_PATH
 if [ -f "$APP_PATH/package.json" ]; then
     # Vérifier si node_modules existe
     if [ ! -d "$APP_PATH/node_modules" ]; then
         echo "Installation des dépendances npm..."
-        npm install
+        if [ "$IS_PLOI" = true ]; then
+            sudo -u $WEB_USER npm install
+        else
+            npm install
+        fi
         show_progress "Dépendances npm installées"
     fi
     
     # Build des assets
     if [ -f "$APP_PATH/node_modules/.bin/vite" ]; then
         echo "Build des assets avec Vite..."
-        npm run build
+        if [ "$IS_PLOI" = true ]; then
+            sudo -u $WEB_USER npm run build
+        else
+            npm run build
+        fi
         show_progress "Assets compilés avec succès"
     fi
     
@@ -221,8 +285,8 @@ else
     show_progress "Pas de package.json trouvé, skip du build frontend"
 fi
 
-# 14. Optimisations Laravel pour la production
-echo -e "${YELLOW}Étape 14: Optimisations Laravel...${NC}"
+# 15. Optimisations Laravel pour la production
+echo -e "${YELLOW}Étape 15: Optimisations Laravel...${NC}"
 cd $APP_PATH
 
 # Clear caches
@@ -245,8 +309,33 @@ show_progress "Routes cached"
 sudo -u $WEB_USER php artisan view:cache
 show_progress "Views cached"
 
-# 15. Permissions finales pour s'assurer que tout est correct
-echo -e "${YELLOW}Étape 15: Vérification finale des permissions...${NC}"
+# 16. Configuration Nginx
+echo -e "${YELLOW}Étape 16: Configuration Nginx...${NC}"
+if [ -f "/etc/nginx/nginx.conf" ]; then
+    # Vérifier que PHP-FPM utilise le bon utilisateur
+    if [ "$IS_PLOI" = true ]; then
+        PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+        PHP_FPM_POOL="/etc/php/${PHP_VERSION}/fpm/pool.d/ploi.conf"
+        if [ -f "$PHP_FPM_POOL" ]; then
+            show_progress "Pool PHP-FPM Ploi détecté"
+        fi
+    fi
+    
+    # Vérifier les sockets PHP-FPM
+    if [ -S "/var/run/php/php-fpm.sock" ]; then
+        chmod 666 /var/run/php/php-fpm.sock
+        show_progress "Socket PHP-FPM configuré"
+    fi
+    
+    # Reload Nginx si nécessaire
+    if systemctl is-active --quiet nginx; then
+        nginx -t 2>/dev/null && systemctl reload nginx
+        show_progress "Configuration Nginx rechargée"
+    fi
+fi
+
+# 17. Permissions finales pour s'assurer que tout est correct
+echo -e "${YELLOW}Étape 17: Vérification finale des permissions...${NC}"
 chown -R $WEB_USER:$WEB_GROUP $APP_PATH/storage
 chown -R $WEB_USER:$WEB_GROUP $APP_PATH/bootstrap/cache
 show_progress "Permissions finales appliquées"
@@ -257,15 +346,32 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}✓ Permissions corrigées avec succès!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo "Rappel des permissions appliquées:"
-echo "  • Propriétaire: $WEB_USER:$WEB_GROUP"
+echo "Configuration détectée:"
+if [ "$IS_PLOI" = true ]; then
+    echo "  • Environnement: Ploi.io"
+else
+    echo "  • Environnement: Standard"
+fi
+echo "  • Serveur web: Nginx"
+echo "  • Utilisateur: $WEB_USER:$WEB_GROUP"
+echo ""
+echo "Permissions appliquées:"
 echo "  • Fichiers: 644 (lecture pour tous, écriture pour propriétaire)"
 echo "  • Dossiers: 755 (lecture/exécution pour tous, écriture pour propriétaire)"
 echo "  • Storage & Cache: 775 (écriture pour propriétaire et groupe)"
 echo "  • .env: 640 (lecture/écriture propriétaire, lecture groupe)"
+echo "  • node_modules/.bin: 755 (exécutables npm/vite)"
 echo ""
-echo -e "${YELLOW}Note:${NC} Si vous rencontrez des problèmes, vérifiez:"
-echo "  1. Que le serveur web utilise bien l'utilisateur $WEB_USER"
-echo "  2. Que PHP-FPM utilise bien l'utilisateur $WEB_USER"
-echo "  3. Les logs dans $APP_PATH/storage/logs/"
+if [ "$IS_PLOI" = true ]; then
+    echo -e "${YELLOW}Note Ploi:${NC}"
+    echo "  • Les déploiements Ploi sont maintenant configurés"
+    echo "  • Le répertoire .deploy et releases sont prêts"
+    echo "  • Utilisez 'ploi deploy' pour déployer"
+    echo ""
+fi
+echo -e "${YELLOW}En cas de problème:${NC}"
+echo "  1. Vérifiez que Nginx utilise l'utilisateur $WEB_USER"
+echo "  2. Vérifiez que PHP-FPM utilise l'utilisateur $WEB_USER"
+echo "  3. Consultez les logs dans $APP_PATH/storage/logs/"
+echo "  4. Vérifiez /var/log/nginx/error.log"
 echo ""

@@ -11,8 +11,13 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Configuration
-APP_PATH="/var/www/html/giga-pdf"
+# Configuration - Utilise le répertoire courant ou le chemin spécifié
+if [ -n "$1" ]; then
+    APP_PATH="$1"
+else
+    APP_PATH="$(pwd)"
+fi
+
 WEB_USER="www-data"
 WEB_GROUP="www-data"
 CURRENT_USER=$(whoami)
@@ -25,7 +30,8 @@ echo ""
 # Vérifier que le script est exécuté avec sudo
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${RED}Ce script doit être exécuté avec sudo${NC}"
-    echo "Usage: sudo ./fix-permissions-prod.sh"
+    echo "Usage: sudo ./fix-permissions-prod.sh [chemin_optionnel]"
+    echo "   ou: sudo ./fix-permissions-prod.sh (utilise le répertoire courant)"
     exit 1
 fi
 
@@ -108,11 +114,28 @@ echo -e "${YELLOW}Étape 6: Configuration d'artisan...${NC}"
 chmod 755 $APP_PATH/artisan
 show_progress "Artisan rendu exécutable"
 
-# 7. Vendor binaries
-echo -e "${YELLOW}Étape 7: Configuration des binaires vendor...${NC}"
+# 7. Vendor binaries et Node modules binaries
+echo -e "${YELLOW}Étape 7: Configuration des binaires vendor et node_modules...${NC}"
 if [ -d "$APP_PATH/vendor/bin" ]; then
     chmod -R 755 $APP_PATH/vendor/bin
     show_progress "Binaires vendor configurés"
+fi
+
+# Node modules binaries (incluant vite, webpack, etc.)
+if [ -d "$APP_PATH/node_modules/.bin" ]; then
+    chmod -R 755 $APP_PATH/node_modules/.bin
+    show_progress "Binaires node_modules configurés (incluant vite)"
+fi
+
+# Permissions spécifiques pour les exécutables npm courants
+if [ -f "$APP_PATH/node_modules/.bin/vite" ]; then
+    chmod 755 $APP_PATH/node_modules/.bin/vite
+    show_progress "Vite rendu exécutable"
+fi
+
+if [ -f "$APP_PATH/node_modules/.bin/vue-tsc" ]; then
+    chmod 755 $APP_PATH/node_modules/.bin/vue-tsc
+    show_progress "Vue-tsc rendu exécutable"
 fi
 
 # 8. Public directory
@@ -169,8 +192,37 @@ else
     show_progress "SELinux non actif ou non installé"
 fi
 
-# 13. Optimisations Laravel pour la production
-echo -e "${YELLOW}Étape 13: Optimisations Laravel...${NC}"
+# 13. Build des assets frontend
+echo -e "${YELLOW}Étape 13: Build des assets frontend...${NC}"
+cd $APP_PATH
+if [ -f "$APP_PATH/package.json" ]; then
+    # Vérifier si node_modules existe
+    if [ ! -d "$APP_PATH/node_modules" ]; then
+        echo "Installation des dépendances npm..."
+        npm install
+        show_progress "Dépendances npm installées"
+    fi
+    
+    # Build des assets
+    if [ -f "$APP_PATH/node_modules/.bin/vite" ]; then
+        echo "Build des assets avec Vite..."
+        npm run build
+        show_progress "Assets compilés avec succès"
+    fi
+    
+    # Permissions sur le dossier public/build
+    if [ -d "$APP_PATH/public/build" ]; then
+        chown -R $WEB_USER:$WEB_GROUP $APP_PATH/public/build
+        find $APP_PATH/public/build -type f -exec chmod 644 {} \;
+        find $APP_PATH/public/build -type d -exec chmod 755 {} \;
+        show_progress "Permissions des assets build configurées"
+    fi
+else
+    show_progress "Pas de package.json trouvé, skip du build frontend"
+fi
+
+# 14. Optimisations Laravel pour la production
+echo -e "${YELLOW}Étape 14: Optimisations Laravel...${NC}"
 cd $APP_PATH
 
 # Clear caches
@@ -193,8 +245,8 @@ show_progress "Routes cached"
 sudo -u $WEB_USER php artisan view:cache
 show_progress "Views cached"
 
-# 14. Permissions finales pour s'assurer que tout est correct
-echo -e "${YELLOW}Étape 14: Vérification finale des permissions...${NC}"
+# 15. Permissions finales pour s'assurer que tout est correct
+echo -e "${YELLOW}Étape 15: Vérification finale des permissions...${NC}"
 chown -R $WEB_USER:$WEB_GROUP $APP_PATH/storage
 chown -R $WEB_USER:$WEB_GROUP $APP_PATH/bootstrap/cache
 show_progress "Permissions finales appliquées"

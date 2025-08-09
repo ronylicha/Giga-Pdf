@@ -2,11 +2,55 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import Pagination from '@/Components/Pagination.vue';
+import { onMounted } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 
 defineProps({
     conversions: Object,
     filters: Object,
 });
+
+const page = usePage();
+
+onMounted(() => {
+    const user = page.props.auth?.user;
+    if (!user) return;
+    try {
+        // Subscribe to per-tenant and per-user channels
+        window.Echo.private(`tenant.${user.tenant_id}`)
+            .listen('ConversionProgress', (e) => updateRow(e))
+            .listen('ConversionCompleted', (e) => updateRow(e))
+            .listen('ConversionFailed', (e) => updateRow(e));
+
+        window.Echo.private(`user.${user.id}`)
+            .listen('ConversionProgress', (e) => updateRow(e))
+            .listen('ConversionCompleted', (e) => updateRow(e))
+            .listen('ConversionFailed', (e) => updateRow(e));
+    } catch (err) {
+        console.warn('Echo not available', err);
+    }
+});
+
+function updateRow(payload) {
+    // Naive in-place update: find row in table and update DOM quickly
+    const row = document.querySelector(`[data-conversion-id="${payload.conversion_id}"]`);
+    if (!row) return;
+    if (payload.progress !== undefined) {
+        const bar = row.querySelector('[data-progress]');
+        const label = row.querySelector('[data-progress-label]');
+        if (bar) bar.style.width = `${payload.progress}%`;
+        if (label) label.textContent = `${payload.progress}%`;
+    }
+    if (payload.status) {
+        const status = row.querySelector('[data-status]');
+        if (status) status.textContent = ({
+            pending: 'En attente',
+            processing: 'En cours',
+            completed: 'Terminé',
+            failed: 'Échoué',
+        })[payload.status] || payload.status;
+    }
+}
 </script>
 
 <template>
@@ -67,7 +111,7 @@ defineProps({
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                                    <tr v-for="conversion in conversions.data" :key="conversion.id">
+                                    <tr v-for="conversion in conversions.data" :key="conversion.id" :data-conversion-id="conversion.id">
                                         <td class="px-6 py-4 whitespace-nowrap">
                                             <div class="text-sm font-medium text-gray-900 dark:text-gray-100">
                                                 {{ conversion.document?.original_name || 'Document supprimé' }}
@@ -79,7 +123,7 @@ defineProps({
                                             </div>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap">
-                                            <span :class="{
+                                            <span data-status :class="{
                                                 'bg-yellow-100 text-yellow-800': conversion.status === 'pending',
                                                 'bg-blue-100 text-blue-800': conversion.status === 'processing',
                                                 'bg-green-100 text-green-800': conversion.status === 'completed',
@@ -92,7 +136,7 @@ defineProps({
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap">
                                             <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                                                <div :class="{
+                                                <div data-progress :class="{
                                                     'bg-blue-600': conversion.status === 'processing',
                                                     'bg-green-600': conversion.status === 'completed',
                                                     'bg-red-600': conversion.status === 'failed'
@@ -101,7 +145,7 @@ defineProps({
                                                 :style="{width: (conversion.progress || 0) + '%'}">
                                                 </div>
                                             </div>
-                                            <div class="text-xs text-gray-500 mt-1">{{ conversion.progress || 0 }}%</div>
+                                            <div data-progress-label class="text-xs text-gray-500 mt-1">{{ conversion.progress || 0 }}%</div>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                                             {{ new Date(conversion.created_at).toLocaleDateString('fr-FR') }}

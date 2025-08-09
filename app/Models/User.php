@@ -54,7 +54,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'last_login_at' => 'datetime',
         'password_changed_at' => 'datetime',
         'preferences' => 'array',
-        'two_factor_recovery_codes' => 'array',
+        'two_factor_recovery_codes' => 'encrypted:array',
+        'two_factor_secret' => 'encrypted',
         'is_active' => 'boolean',
         'two_factor_required' => 'boolean',
     ];
@@ -246,9 +247,66 @@ class User extends Authenticatable implements MustVerifyEmail
         }
         
         $this->update([
-            'two_factor_recovery_codes' => encrypt($codes)
+            'two_factor_recovery_codes' => $codes
         ]);
         
+        return $codes;
+    }
+
+    /**
+     * Enable two-factor authentication for the user
+     */
+    public function enableTwoFactor(string $secret, array $recoveryCodes): void
+    {
+        $this->update([
+            'two_factor_secret' => $secret,
+            'two_factor_recovery_codes' => $recoveryCodes,
+            'two_factor_confirmed_at' => now(),
+        ]);
+    }
+
+    /**
+     * Disable two-factor authentication for the user
+     */
+    public function disableTwoFactor(): void
+    {
+        $this->update([
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+        ]);
+    }
+
+    /**
+     * Verify a recovery code and consume it if valid
+     */
+    public function verifyRecoveryCode(string $code): bool
+    {
+        $stored = $this->two_factor_recovery_codes ?: [];
+        if (!is_array($stored)) {
+            return false;
+        }
+        $index = array_search($code, $stored, true);
+        if ($index === false) {
+            return false;
+        }
+        unset($stored[$index]);
+        $this->two_factor_recovery_codes = array_values($stored);
+        $this->save();
+        return true;
+    }
+
+    /**
+     * Regenerate new recovery codes set
+     */
+    public function generateRecoveryCodes(): array
+    {
+        $codes = [];
+        for ($i = 0; $i < 8; $i++) {
+            $codes[] = strtoupper(bin2hex(random_bytes(4)) . '-' . bin2hex(random_bytes(4)));
+        }
+        $this->two_factor_recovery_codes = $codes;
+        $this->save();
         return $codes;
     }
 

@@ -81,64 +81,10 @@ def remove_text_keep_images(pdf_path, output_path):
     except Exception as e:
         return f"Error: {str(e)}"
 
-def pdf_to_html(pdf_path):
-    """Convert PDF to HTML with layout preservation"""
-    try:
-        doc = fitz.open(pdf_path)
-        html_pages = []
-        
-        for page_num, page in enumerate(doc):
-            # Get page dimensions
-            rect = page.rect
-            width = rect.width
-            height = rect.height
-            
-            # Extract text with positioning
-            blocks = page.get_text("dict")
-            
-            html = f'<div class="pdf-page" style="width:{width}px; height:{height}px; position:relative; page-break-after:always;">'
-            
-            # Process each text block
-            for block in blocks["blocks"]:
-                if block["type"] == 0:  # Text block
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            x = span["bbox"][0]
-                            y = span["bbox"][1]
-                            text = span["text"]
-                            font_size = span["size"]
-                            
-                            html += f'<span style="position:absolute; left:{x}px; top:{y}px; font-size:{font_size}px;">{text}</span>'
-            
-            # Extract images
-            image_list = page.get_images()
-            for img_index, img in enumerate(image_list):
-                xref = img[0]
-                pix = fitz.Pixmap(doc, xref)
-                img_data = pix.tobytes("png")
-                import base64
-                img_base64 = base64.b64encode(img_data).decode()
-                
-                # Get image position
-                rects = page.get_image_rects(xref)
-                if rects:
-                    rect = rects[0]
-                    html += f'<img src="data:image/png;base64,{img_base64}" style="position:absolute; left:{rect.x0}px; top:{rect.y0}px; width:{rect.width}px; height:{rect.height}px;" />'
-                
-                pix = None
-            
-            html += '</div>'
-            html_pages.append(html)
-        
-        doc.close()
-        return '\n'.join(html_pages)
-    except Exception as e:
-        return f"<p>Error: {str(e)}</p>"
-
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: pymupdf_tools.py <command> <pdf_file> [options]")
-        print("Commands: extract_text, extract_images, remove_text, to_html")
+        print("Commands: extract_text, extract_images, remove_text")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -152,7 +98,5 @@ if __name__ == "__main__":
     elif command == "remove_text" and pdf_file:
         output_file = sys.argv[3] if len(sys.argv) > 3 else "output_no_text.pdf"
         print(remove_text_keep_images(pdf_file, output_file))
-    elif command == "to_html" and pdf_file:
-        print(pdf_to_html(pdf_file))
     else:
         print("Invalid command or missing arguments")

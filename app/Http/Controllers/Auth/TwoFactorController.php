@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
-use PragmarX\Google2FA\Google2FA;
+use PragmaRX\Google2FA\Google2FA;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
@@ -219,7 +219,7 @@ class TwoFactorController extends Controller
             }
         } else {
             // TOTP code
-            $secret = decrypt($user->two_factor_secret);
+            $secret = $user->two_factor_secret; // decrypted via cast
             $valid = $this->google2fa->verifyKey($secret, $request->code);
         }
         
@@ -294,7 +294,7 @@ class TwoFactorController extends Controller
             ], 400);
         }
         
-        $secret = decrypt($user->two_factor_secret);
+        $secret = $user->two_factor_secret; // decrypted via cast
         
         // Generate QR code
         $qrCodeUrl = $this->google2fa->getQRCodeUrl(

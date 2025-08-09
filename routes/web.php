@@ -38,17 +38,29 @@ Route::post('/invitations/{token}', [InvitationController::class, 'accept'])->na
 // Authentication routes
 require __DIR__.'/auth.php';
 
+// Public 2FA challenge routes (user is logged out during challenge)
+Route::prefix('two-factor')->group(function () {
+    Route::get('/challenge', [TwoFactorController::class, 'challenge'])->name('2fa.challenge');
+    Route::post('/verify', [TwoFactorController::class, 'verify'])->name('2fa.verify');
+});
+
 // Authenticated routes
 Route::middleware(['auth', 'verified'])->group(function () {
     
-    // 2FA setup routes
-    Route::prefix('two-factor')->name('two-factor.')->group(function () {
-        Route::get('/', [TwoFactorController::class, 'index'])->name('index');
-        Route::post('/enable', [TwoFactorController::class, 'enable'])->name('enable');
-        Route::post('/verify', [TwoFactorController::class, 'verify'])->name('verify');
-        Route::post('/disable', [TwoFactorController::class, 'disable'])->name('disable');
-        Route::post('/recovery-codes', [TwoFactorController::class, 'regenerateRecoveryCodes'])->name('recovery-codes');
+    // 2FA routes (only for authenticated user managing their 2FA)
+    Route::prefix('two-factor')->group(function () {
+        // Setup (optional, from profile)
+        Route::get('/', [TwoFactorController::class, 'show'])->name('2fa.setup');
+        Route::post('/enable', [TwoFactorController::class, 'enable'])->name('2fa.enable');
+        Route::post('/confirm', [TwoFactorController::class, 'confirm'])->name('2fa.confirm');
+        Route::post('/disable', [TwoFactorController::class, 'disable'])->name('2fa.disable');
+        Route::post('/recovery-codes', [TwoFactorController::class, 'regenerateRecoveryCodes'])->name('2fa.recovery-codes');
     });
+
+    // Profile security (2FA management) page
+    Route::get('/profile/security', function () {
+        return Inertia::render('Profile/Security');
+    })->name('profile.security');
     
     // Profile routes (from Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

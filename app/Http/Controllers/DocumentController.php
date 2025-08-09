@@ -1413,6 +1413,7 @@ class DocumentController extends Controller
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="' . csrf_token() . '">
     <title>PDF Editor</title>';
     
         // Add preserved styles from PDF (filtered and scoped)
@@ -1581,31 +1582,55 @@ class DocumentController extends Controller
         /* Main container */
         .pdf-editor-container {
             min-height: 100vh !important;
-            padding: 40px 20px !important;
+            padding: 20px !important;
             background: #f5f5f5 !important;
             display: flex !important;
             justify-content: center !important;
             align-items: flex-start !important;
+            text-align: center !important;
         }
         
         .pdf-content {
             background: white !important;
-            padding: 40px !important;
+            padding: 0 !important;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08) !important;
-            min-height: 1000px !important;
             position: relative !important;
-            max-width: 900px !important;
-            width: 100% !important;
+            width: fit-content !important;
+            max-width: 100% !important;
             margin: 0 auto !important;
-            border: 2px solid #dee2e6 !important;
-            border-radius: 8px !important;
+            border: 1px solid #dee2e6 !important;
+            border-radius: 4px !important;
             transform-origin: top center !important;
             transition: transform 0.3s ease !important;
+            display: inline-block !important;
+        }
+        
+        /* PDF page container - exact size */
+        .pdf-page-container {
+            position: relative !important;
+            margin: 0 !important;
+            padding: 20px !important;
+            page-break-after: always !important;
+            background: white !important;
+            width: fit-content !important;
+            min-width: 600px !important;
+            box-sizing: border-box !important;
+            text-align: left !important;
+        }
+        
+        .pdf-page-container:last-child {
+            page-break-after: auto !important;
+            margin-bottom: 0 !important;
         }
         
         /* Allow background images in PDF document content */
         .pdf-document {
             position: relative;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: fit-content !important;
+            box-sizing: border-box !important;
+            display: inline-block !important;
             /* Background images from PDF are allowed here */
         }
         
@@ -1621,6 +1646,16 @@ class DocumentController extends Controller
         }
         
         .view-mode.active {
+            display: block;
+            min-height: 400px;
+        }
+        
+        /* Ensure content is always visible */
+        #pdfContent:empty::before {
+            content: "Cliquez ici pour commencer à éditer...";
+            color: #999;
+            font-style: italic;
+            padding: 20px;
             display: block;
         }
         
@@ -1702,9 +1737,11 @@ class DocumentController extends Controller
         .pdf-text {
             white-space: pre-wrap;
             margin: 20px 0;
+            padding: 10px;
             line-height: 1.8;
             font-size: 14px;
             color: #212529;
+            min-height: 30px;
         }
         
         .pdf-text[contenteditable="true"] {
@@ -2011,6 +2048,15 @@ class DocumentController extends Controller
             return $editableHtml;
         }
         
+        // If no content, provide a minimal structure
+        if (empty($content['full_html']) && empty($content['text']) && empty($content['tables'])) {
+            return '<div class="pdf-document" contenteditable="true">
+                <div class="pdf-page-container">
+                    <p>Commencez à éditer votre document ici...</p>
+                </div>
+            </div>';
+        }
+        
         // Render tables
         if (($mode === 'combined' || $mode === 'tables') && !empty($content['tables']) && is_array($content['tables'])) {
             foreach ($content['tables'] as $index => $table) {
@@ -2145,6 +2191,51 @@ class DocumentController extends Controller
         $command = sprintf('pdfinfo %s | grep "Pages:" | awk \'{print $2}\'', escapeshellarg($pdfPath));
         $pageCount = trim(shell_exec($command));
         return is_numeric($pageCount) ? (int)$pageCount : 0;
+    }
+    
+    /**
+     * Get actual PDF dimensions from the original file
+     */
+    private function getOriginalPdfDimensions($pdfPath)
+    {
+        try {
+            // Use pdfinfo to get page dimensions
+            $command = sprintf('pdfinfo %s 2>/dev/null', escapeshellarg($pdfPath));
+            $output = shell_exec($command);
+            
+            if ($output) {
+                // Parse page size (e.g., "Page size:       595 x 842 pts (A4)")
+                if (preg_match('/Page size:\s+(\d+\.?\d*)\s+x\s+(\d+\.?\d*)\s+pts/i', $output, $matches)) {
+                    $widthPts = floatval($matches[1]);
+                    $heightPts = floatval($matches[2]);
+                    
+                    // Convert points to mm (1 pt = 0.352778 mm)
+                    $widthMm = round($widthPts * 0.352778);
+                    $heightMm = round($heightPts * 0.352778);
+                    
+                    return [
+                        'width_pts' => $widthPts,
+                        'height_pts' => $heightPts,
+                        'width_mm' => $widthMm,
+                        'height_mm' => $heightMm,
+                        'width_px' => round($widthPts * 96 / 72), // Convert to pixels at 96 DPI
+                        'height_px' => round($heightPts * 96 / 72)
+                    ];
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('Could not determine PDF dimensions', ['error' => $e->getMessage()]);
+        }
+        
+        // Return A4 as default
+        return [
+            'width_pts' => 595,
+            'height_pts' => 842,
+            'width_mm' => 210,
+            'height_mm' => 297,
+            'width_px' => 793,
+            'height_px' => 1122
+        ];
     }
     
     /**
@@ -2310,11 +2401,12 @@ class DocumentController extends Controller
                 const scale = currentZoom / 100;
                 pdfContent.style.transform = \'scale(\' + scale + \')\';
                 
-                // Adjust container height to accommodate scaled content
+                // Adjust container to fit content
                 const container = document.querySelector(\'.pdf-editor-container\');
-                if (container) {
-                    const baseHeight = 1000; // min-height of pdf-content
-                    container.style.minHeight = (baseHeight * scale + 100) + \'px\';
+                if (container && pdfContent) {
+                    // Get actual content height
+                    const contentHeight = pdfContent.scrollHeight || pdfContent.offsetHeight;
+                    container.style.minHeight = (contentHeight * scale + 100) + \'px\';
                 }
             }
         }
@@ -2641,11 +2733,15 @@ class DocumentController extends Controller
             }
 
             // Get all page containers and their exact dimensions
-            const pageContainers = pdfContent.querySelectorAll(\'.pdf-page-container\');
+            let pageContainers = pdfContent.querySelectorAll(\'.pdf-page-container\');
+            
+            // If no page containers, treat the entire content as one page
             if (!pageContainers.length) {
-                alert("Erreur: Aucune page trouvée.");
-                hideLoading();
-                return;
+                // Create a wrapper for all content
+                const wrapper = document.createElement(\'div\');
+                wrapper.className = \'pdf-page-container\';
+                wrapper.innerHTML = pdfContent.innerHTML;
+                pageContainers = [wrapper];
             }
 
             // Build HTML with exact page dimensions preserved
@@ -2655,6 +2751,17 @@ class DocumentController extends Controller
             
             pageContainers.forEach((page, index) => {
                 const pageClone = page.cloneNode(true);
+                
+                // Convert all images to base64 if not already
+                const images = pageClone.querySelectorAll(\'img\');
+                images.forEach(img => {
+                    // If image src is not already a data URI, keep it as is
+                    // The server will handle the conversion
+                    if (img.src && !img.src.startsWith(\'data:\')) {
+                        // Ensure the src attribute is preserved
+                        img.setAttribute(\'src\', img.src);
+                    }
+                });
                 
                 // Get the computed style to get actual dimensions
                 const style = window.getComputedStyle(page);
@@ -2872,14 +2979,34 @@ class DocumentController extends Controller
         try {
             $html = $request->html;
             
+            // Log for debugging
+            Log::info('Starting HTML to PDF conversion', [
+                'document_id' => $document->id,
+                'html_length' => strlen($html),
+                'has_images' => strpos($html, '<img') !== false
+            ]);
+            
             // Process and embed all images as base64
             $html = $this->processImagesForPdf($html, $document);
             
             // Extract only the page containers from the HTML
             $cleanedHtml = $this->extractPageContent($html);
             
-            // Get page dimensions
-            $dimensions = $this->extractPageDimensions($html);
+            // Process images again on cleaned HTML to ensure they're embedded
+            $cleanedHtml = $this->processImagesForPdf($cleanedHtml, $document);
+            
+            // Get original PDF dimensions if available
+            $originalPdfPath = Storage::path($document->stored_name);
+            $originalDimensions = null;
+            if (file_exists($originalPdfPath) && $document->mime_type === 'application/pdf') {
+                $originalDimensions = $this->getOriginalPdfDimensions($originalPdfPath);
+                Log::info('Using original PDF dimensions', $originalDimensions);
+            }
+            
+            // Get page dimensions - use original if available, otherwise extract from HTML
+            $dimensions = $originalDimensions ? 
+                ['width' => $originalDimensions['width_mm'], 'height' => $originalDimensions['height_mm']] :
+                $this->extractPageDimensions($html);
             
             // Create final HTML document
             $finalHtml = $this->buildFinalHtml($cleanedHtml, $dimensions);
@@ -2948,21 +3075,60 @@ class DocumentController extends Controller
                 $imageData = null;
                 $mimeType = 'image/png';
                 
-                // Extract filename from URL
-                $filename = basename(parse_url($src, PHP_URL_PATH));
-                
-                // Try document-specific folder first
-                $paths = [
-                    storage_path('app/documents/' . $document->id . '/' . $filename),
-                    storage_path('app/temp/' . $filename),
-                    public_path($src),
-                ];
-                
-                foreach ($paths as $path) {
-                    if (file_exists($path) && is_file($path)) {
-                        $imageData = file_get_contents($path);
-                        $mimeType = mime_content_type($path);
-                        break;
+                // Handle different types of image URLs
+                if (strpos($src, 'http') === 0 || strpos($src, '//') === 0) {
+                    // External URL - try to fetch it
+                    try {
+                        $imageData = @file_get_contents($src);
+                        if ($imageData) {
+                            $mimeType = 'image/png'; // Default, will be overridden if we can detect
+                        }
+                    } catch (\Exception $e) {
+                        // Ignore fetch errors
+                    }
+                } else {
+                    // Local file - extract filename from URL
+                    $filename = basename(parse_url($src, PHP_URL_PATH));
+                    
+                    // Check if it's a route-based URL (like /documents/123/assets/filename.png)
+                    if (preg_match('/\/documents\/\d+\/assets\/(.+)/', $src, $urlMatch)) {
+                        $filename = $urlMatch[1];
+                    }
+                    
+                    // Try document-specific folders and various locations
+                    $paths = [
+                        storage_path('app/documents/' . $document->id . '/' . $filename),
+                        storage_path('app/documents/' . $document->tenant_id . '/' . $filename),
+                        storage_path('app/' . dirname($document->stored_name) . '/' . $filename),
+                        storage_path('app/temp/' . $filename),
+                        storage_path('app/public/' . $filename),
+                        storage_path('app/public/documents/' . $document->id . '/' . $filename),
+                        public_path($filename),
+                        public_path('storage/' . $filename),
+                        public_path('documents/' . $document->id . '/' . $filename),
+                        sys_get_temp_dir() . '/' . $filename,
+                    ];
+                    
+                    // If src starts with /, it's absolute from public
+                    if (strpos($src, '/') === 0) {
+                        array_unshift($paths, public_path(ltrim($src, '/')));
+                    }
+                    
+                    // Log paths being checked for debugging
+                    Log::debug('Searching for image', [
+                        'src' => $src,
+                        'filename' => $filename,
+                        'document_id' => $document->id,
+                        'paths_checked' => $paths
+                    ]);
+                    
+                    foreach ($paths as $path) {
+                        if (file_exists($path) && is_file($path)) {
+                            $imageData = file_get_contents($path);
+                            $mimeType = mime_content_type($path) ?: 'image/png';
+                            Log::info('Image found and embedded', ['path' => $path, 'size' => strlen($imageData)]);
+                            break;
+                        }
                     }
                 }
                 
@@ -2970,6 +3136,9 @@ class DocumentController extends Controller
                     $base64 = base64_encode($imageData);
                     return "<img{$beforeSrc}src=\"data:{$mimeType};base64,{$base64}\"{$afterSrc}>";
                 }
+                
+                // Log missing image for debugging
+                Log::warning('Image not found for PDF export', ['src' => $src, 'document_id' => $document->id]);
                 
                 // Return original if image not found
                 return $matches[0];
@@ -2980,20 +3149,17 @@ class DocumentController extends Controller
     
     private function extractPageContent($html)
     {
-        // Use a more robust regex to capture nested divs
-        // This will capture the entire page container including all nested elements
-        $pattern = '/<div[^>]*class=["\'][^"\']*pdf-page-container[^"\']*["\'][^>]*>(?:[^<]|<(?!\/div>)|<div[^>]*>(?:[^<]|<(?!\/div>))*<\/div>)*<\/div>/is';
-        
-        preg_match_all($pattern, $html, $matches);
-        
-        if (!empty($matches[0])) {
-            return implode("\n", $matches[0]);
-        }
-        
-        // Alternative: Use DOM parsing for more reliable extraction
+        // Use DOM parsing for reliable extraction
         try {
             $dom = new \DOMDocument();
-            @$dom->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            // Suppress warnings for HTML5 tags
+            libxml_use_internal_errors(true);
+            
+            // Load HTML with UTF-8 encoding
+            $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');
+            $dom->loadHTML($html);
+            libxml_clear_errors();
+            
             $xpath = new \DOMXPath($dom);
             
             // Find all elements with class pdf-page-container
@@ -3002,17 +3168,65 @@ class DocumentController extends Controller
             if ($pageContainers->length > 0) {
                 $result = '';
                 foreach ($pageContainers as $container) {
+                    // Save the full HTML including all child elements
                     $result .= $dom->saveHTML($container) . "\n";
                 }
                 return $result;
             }
+            
+            // Fallback: look for pdf-content div
+            $pdfContent = $xpath->query("//div[@id='pdfContent']");
+            if ($pdfContent->length > 0) {
+                // Get all children of pdfContent
+                $content = '';
+                foreach ($pdfContent->item(0)->childNodes as $child) {
+                    if ($child->nodeType === XML_ELEMENT_NODE) {
+                        $content .= $dom->saveHTML($child) . "\n";
+                    }
+                }
+                return $content;
+            }
+            
+            // Last fallback: get body content excluding toolbar and status bar
+            $body = $xpath->query("//body")->item(0);
+            if ($body) {
+                $content = '';
+                foreach ($body->childNodes as $child) {
+                    if ($child->nodeType === XML_ELEMENT_NODE) {
+                        $classes = $child->getAttribute('class');
+                        // Skip toolbar, loading overlay, and status bar
+                        if (!preg_match('/(editor-toolbar|loading-overlay|status-bar)/i', $classes)) {
+                            // For pdf-editor-container, get the inner pdf-content
+                            if (strpos($classes, 'pdf-editor-container') !== false) {
+                                $innerContent = $xpath->query(".//div[@class='pdf-content' or contains(@class, 'pdf-content')]", $child);
+                                if ($innerContent->length > 0) {
+                                    foreach ($innerContent->item(0)->childNodes as $innerChild) {
+                                        if ($innerChild->nodeType === XML_ELEMENT_NODE) {
+                                            $content .= $dom->saveHTML($innerChild) . "\n";
+                                        }
+                                    }
+                                }
+                            } else {
+                                $content .= $dom->saveHTML($child) . "\n";
+                            }
+                        }
+                    }
+                }
+                return $content;
+            }
         } catch (\Exception $e) {
-            // Fall back to regex if DOM parsing fails
+            Log::error('DOM parsing failed in extractPageContent', ['error' => $e->getMessage()]);
         }
         
-        // If no page containers found, extract body content
+        // Final fallback: extract body content with regex
+        if (preg_match('/<div[^>]*id=["\']pdfContent["\'][^>]*>(.*?)<\/div>\s*<\/div>\s*<div[^>]*class=["\']status-bar/is', $html, $match)) {
+            return $match[1];
+        }
+        
         if (preg_match('/<body[^>]*>(.*?)<\/body>/is', $html, $bodyMatch)) {
-            return $bodyMatch[1];
+            // Remove toolbar and status bar
+            $body = preg_replace('/<div[^>]*class=["\'][^"\']*(editor-toolbar|status-bar|loading-overlay)[^"\']["\'][^>]*>.*?<\/div>/is', '', $bodyMatch[1]);
+            return $body;
         }
         
         return $html;
@@ -3051,6 +3265,31 @@ class DocumentController extends Controller
         $width = $dimensions['width'];
         $height = $dimensions['height'];
         
+        // Analyser le contenu pour obtenir les dimensions réelles du contenu
+        $contentDimensions = $this->analyzeContentDimensions($content);
+        
+        // Calculer le facteur d'échelle pour adapter le contenu à 100% de la page
+        $scaleX = 1;
+        $scaleY = 1;
+        if ($contentDimensions['width'] > 0 && $contentDimensions['height'] > 0) {
+            // Convertir les dimensions de contenu de px vers mm
+            $contentWidthMm = $contentDimensions['width'] * 25.4 / 96;
+            $contentHeightMm = $contentDimensions['height'] * 25.4 / 96;
+            
+            // Calculer les facteurs d'échelle
+            $scaleX = $width / $contentWidthMm;
+            $scaleY = $height / $contentHeightMm;
+            
+            // Utiliser le facteur d'échelle qui préserve les proportions
+            // tout en maximisant l'utilisation de l'espace
+            $scale = min($scaleX, $scaleY);
+            
+            // Appliquer un facteur de 0.95 pour avoir une petite marge
+            $scale = $scale * 0.95;
+        } else {
+            $scale = 1;
+        }
+        
         return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -3063,16 +3302,34 @@ class DocumentController extends Controller
             box-sizing: border-box;
         }
         
-        body {
+        html, body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        body {
             width: {$width}mm;
             height: {$height}mm;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Conteneur principal qui sera mis à l'échelle */
+        .pdf-scaling-wrapper {
+            transform: scale({$scale});
+            transform-origin: center center;
+            width: {$contentDimensions['width']}px;
+            height: {$contentDimensions['height']}px;
+            position: relative;
         }
         
         .pdf-page-container {
-            width: {$width}mm;
-            height: {$height}mm;
+            width: 100%;
+            height: 100%;
             position: relative;
             page-break-after: always;
             overflow: hidden;
@@ -3084,13 +3341,43 @@ class DocumentController extends Controller
             page-break-after: auto;
         }
         
-        .pdf-element, .pdf-text, .pdf-image {
+        /* Pour les éléments avec positionnement absolu */
+        .pdf-element, .pdf-text {
             position: absolute;
         }
         
+        /* Images adaptatives */
         img {
             max-width: 100%;
+            height: auto;
             object-fit: contain;
+            display: block;
+        }
+        
+        .pdf-image {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .pdf-image-container {
+            display: inline-block;
+            position: relative;
+        }
+        
+        /* Tables et texte adaptifs */
+        .pdf-table {
+            width: 100%;
+            table-layout: fixed;
+        }
+        
+        .pdf-table td, .pdf-table th {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .pdf-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         
         @page {
@@ -3102,12 +3389,20 @@ class DocumentController extends Controller
             body {
                 margin: 0;
                 padding: 0;
+                width: {$width}mm;
+                height: {$height}mm;
+            }
+            
+            .pdf-scaling-wrapper {
+                transform: scale({$scale}) !important;
             }
         }
     </style>
 </head>
 <body>
-{$content}
+    <div class="pdf-scaling-wrapper">
+        {$content}
+    </div>
 </body>
 </html>
 HTML;
@@ -3120,7 +3415,7 @@ HTML;
         $width = $dimensions['width'];
         $height = $dimensions['height'];
         
-        // Use wkhtmltopdf with precise settings
+        // Use wkhtmltopdf with optimized settings for full-page utilization
         $command = sprintf(
             'wkhtmltopdf ' .
             '--page-width %dmm --page-height %dmm ' .
@@ -3130,9 +3425,12 @@ HTML;
             '--enable-local-file-access ' .
             '--load-error-handling ignore ' .
             '--encoding UTF-8 ' .
-            '--dpi 96 ' .
-            '--image-quality 100 ' .
-            '--no-background ' .
+            '--dpi 96 ' . // Standard screen DPI for better scaling
+            '--image-quality 90 ' . // Good image quality
+            '--image-dpi 150 ' . // Optimize image resolution
+            '--javascript-delay 1000 ' . // Allow time for transformations
+            '--zoom 1.0 ' . // No additional zoom
+            '--enable-javascript ' . // Enable JS for transformations
             '%s %s 2>&1',
             $width,
             $height,
@@ -3148,6 +3446,86 @@ HTML;
         
         Log::error('wkhtmltopdf failed', ['command' => $command, 'output' => $output, 'code' => $returnCode]);
         return null;
+    }
+    
+    /**
+     * Analyser les dimensions réelles du contenu HTML
+     */
+    private function analyzeContentDimensions($html)
+    {
+        $width = 595; // Default A4 width in pixels (@ 72 DPI)
+        $height = 842; // Default A4 height in pixels (@ 72 DPI)
+        
+        try {
+            $dom = new \DOMDocument();
+            libxml_use_internal_errors(true);
+            $dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
+            libxml_clear_errors();
+            
+            $xpath = new \DOMXPath($dom);
+            
+            // Chercher les dimensions dans les conteneurs de page
+            $pageContainers = $xpath->query("//div[contains(@class, 'pdf-page-container')]");
+            if ($pageContainers->length > 0) {
+                $firstContainer = $pageContainers->item(0);
+                $style = $firstContainer->getAttribute('style');
+                
+                // Extraire largeur et hauteur du style
+                if (preg_match('/width:\s*(\d+\.?\d*)px/i', $style, $widthMatch)) {
+                    $width = floatval($widthMatch[1]);
+                }
+                if (preg_match('/height:\s*(\d+\.?\d*)px/i', $style, $heightMatch)) {
+                    $height = floatval($heightMatch[1]);
+                }
+            }
+            
+            // Si pas de conteneur de page, analyser le contenu pour trouver les limites
+            if ($pageContainers->length == 0) {
+                $maxX = 0;
+                $maxY = 0;
+                
+                // Chercher tous les éléments avec position absolue
+                $absoluteElements = $xpath->query("//*[@style and contains(@style, 'position:') and contains(@style, 'absolute')]");
+                foreach ($absoluteElements as $element) {
+                    $style = $element->getAttribute('style');
+                    
+                    $left = 0;
+                    $top = 0;
+                    $elemWidth = 0;
+                    $elemHeight = 0;
+                    
+                    if (preg_match('/left:\s*(\d+\.?\d*)px/i', $style, $match)) {
+                        $left = floatval($match[1]);
+                    }
+                    if (preg_match('/top:\s*(\d+\.?\d*)px/i', $style, $match)) {
+                        $top = floatval($match[1]);
+                    }
+                    if (preg_match('/width:\s*(\d+\.?\d*)px/i', $style, $match)) {
+                        $elemWidth = floatval($match[1]);
+                    }
+                    if (preg_match('/height:\s*(\d+\.?\d*)px/i', $style, $match)) {
+                        $elemHeight = floatval($match[1]);
+                    }
+                    
+                    $maxX = max($maxX, $left + $elemWidth);
+                    $maxY = max($maxY, $top + $elemHeight);
+                }
+                
+                if ($maxX > 0 && $maxY > 0) {
+                    // Ajouter une marge de 20px
+                    $width = $maxX + 20;
+                    $height = $maxY + 20;
+                }
+            }
+            
+        } catch (\Exception $e) {
+            Log::warning('Failed to analyze content dimensions', ['error' => $e->getMessage()]);
+        }
+        
+        return [
+            'width' => $width,
+            'height' => $height
+        ];
     }
     
 /**

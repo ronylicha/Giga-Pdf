@@ -155,6 +155,32 @@ if [ -f "$APP_PATH/node_modules/.bin/vue-tsc" ]; then
     show_progress "Vue-tsc rendu exécutable"
 fi
 
+# Permissions pour esbuild (nécessaire pour Vite)
+if [ -d "$APP_PATH/node_modules/@esbuild" ]; then
+    echo "Configuration des permissions esbuild..."
+    # Trouver et rendre exécutables tous les binaires esbuild
+    find "$APP_PATH/node_modules/@esbuild" -type f -name "esbuild" -exec chmod 755 {} \;
+    find "$APP_PATH/node_modules/@esbuild" -type f -name "*.node" -exec chmod 755 {} \;
+    
+    # Permissions spécifiques pour les différentes architectures
+    for arch_dir in "$APP_PATH/node_modules/@esbuild"/*/; do
+        if [ -d "$arch_dir/bin" ]; then
+            chmod -R 755 "$arch_dir/bin"
+        fi
+    done
+    
+    # Assurer que le propriétaire est correct
+    chown -R $WEB_USER:$WEB_GROUP "$APP_PATH/node_modules/@esbuild"
+    show_progress "Binaires esbuild configurés"
+fi
+
+# Permissions pour rollup (utilisé par Vite)
+if [ -d "$APP_PATH/node_modules/@rollup" ]; then
+    find "$APP_PATH/node_modules/@rollup" -type f -name "*.node" -exec chmod 755 {} \;
+    chown -R $WEB_USER:$WEB_GROUP "$APP_PATH/node_modules/@rollup"
+    show_progress "Binaires rollup configurés"
+fi
+
 # 8. Public directory
 echo -e "${YELLOW}Étape 8: Configuration du répertoire public...${NC}"
 chmod 755 $APP_PATH/public

@@ -108,17 +108,15 @@ class RegisteredUserController extends Controller
                 'email_verified_at' => now(), // Auto-verify for tenant admins
             ]);
             
-            // Create or get the tenant-admin role for this specific tenant (team)
-            $role = \Spatie\Permission\Models\Role::firstOrCreate(
-                [
-                    'name' => 'tenant-admin',
-                    'team_id' => $tenant->id,
-                    'guard_name' => 'web'
-                ]
-            );
+            // Create roles and permissions for this tenant
+            $permissionService = new \App\Services\TenantPermissionService();
+            $permissionService->createTenantRolesAndPermissions($tenant);
             
-            // Assign the role to the user with team context
-            $user->assignRole($role);
+            // Set team context for Spatie permissions
+            app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($tenant->id);
+            
+            // Assign the tenant-admin role to the user
+            $user->assignRole('tenant-admin');
 
             DB::commit();
 

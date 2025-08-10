@@ -4,7 +4,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 
-defineProps({
+const props = defineProps({
     title: String,
     documents: {
         type: Array,
@@ -18,7 +18,7 @@ const pageRanges = ref('1-5, 6-10'); // For range splitting
 const isProcessing = ref(false);
 
 const pdfDocuments = computed(() => {
-    return documents.filter(doc => doc.mime_type === 'application/pdf');
+    return props.documents.filter(doc => doc.mime_type === 'application/pdf');
 });
 
 const canSplit = computed(() => {

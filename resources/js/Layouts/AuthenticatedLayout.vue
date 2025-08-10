@@ -187,10 +187,6 @@ onMounted(() => {
                                             Utilisateurs
                                         </DropdownLink>
                                         
-                                        <DropdownLink :href="route('tenant.settings')">
-                                            Paramètres
-                                        </DropdownLink>
-                                        
                                         <DropdownLink :href="route('tenant.activity')">
                                             Journal d'Activité
                                         </DropdownLink>
@@ -379,7 +375,6 @@ onMounted(() => {
                     <div v-if="$page.props.auth.user?.role === 'tenant-admin'" class="border-t border-gray-200 dark:border-gray-600 pt-2 pb-2">
                         <div class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Administration</div>
                         <ResponsiveNavLink :href="route('tenant.users.index')">Utilisateurs</ResponsiveNavLink>
-                        <ResponsiveNavLink :href="route('tenant.settings')">Paramètres</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tenant.activity')">Journal d'activité</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tenant.storage')">Gestion stockage</ResponsiveNavLink>
                     </div>

@@ -13,7 +13,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Register PDF Services
+        $this->app->singleton(\App\Services\PDFService::class, function ($app) {
+            return new \App\Services\PDFService();
+        });
+        
+        $this->app->singleton(\App\Services\ConversionService::class, function ($app) {
+            return new \App\Services\ConversionService();
+        });
+        
+        $this->app->singleton(\App\Services\OCRService::class, function ($app) {
+            return new \App\Services\OCRService();
+        });
+        
+        $this->app->singleton(\App\Services\PdfToHtmlService::class, function ($app) {
+            return new \App\Services\PdfToHtmlService();
+        });
     }
 
     /**

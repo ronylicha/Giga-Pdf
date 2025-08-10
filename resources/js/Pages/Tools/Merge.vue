@@ -4,7 +4,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 
-defineProps({
+const props = defineProps({
     title: String,
     documents: {
         type: Array,
@@ -89,7 +89,7 @@ const mergePDFs = () => {
                                 </h3>
                                 
                                 <div class="space-y-2 max-h-96 overflow-y-auto">
-                                    <div v-for="document in documents.filter(doc => doc.mime_type === 'application/pdf')" 
+                                    <div v-for="document in props.documents.filter(doc => doc.mime_type === 'application/pdf')" 
                                          :key="document.id"
                                          class="flex items-center p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                                          @click="toggleDocument(document.id)">
@@ -172,7 +172,7 @@ const mergePDFs = () => {
                                              :key="docId"
                                              class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
                                             <span class="text-sm text-gray-900 dark:text-gray-100">
-                                                {{ index + 1 }}. {{ documents.find(d => d.id === docId)?.original_name }}
+                                                {{ index + 1 }}. {{ props.documents.find(d => d.id === docId)?.original_name }}
                                             </span>
                                             <div class="flex space-x-1">
                                                 <button @click="moveUp(index)" 

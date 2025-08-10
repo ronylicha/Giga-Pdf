@@ -174,6 +174,7 @@ class InstallGigaPdf extends Command
             'python3' => ['command' => 'python3 --version', 'required' => false],
             'pip3' => ['command' => 'pip3 --version', 'required' => false],
             'libreoffice' => ['command' => 'libreoffice --version', 'required' => false],
+            'qpdf' => ['command' => 'qpdf --version', 'required' => false],
         ];
 
         $missingOptional = [];
@@ -247,6 +248,10 @@ class InstallGigaPdf extends Command
             
             if (in_array('python3', $missingOptional) || in_array('pip3', $missingOptional)) {
                 $this->installPythonTools();
+            }
+            
+            if (in_array('qpdf', $missingOptional)) {
+                $this->installQpdf();
             }
         }
         
@@ -1365,6 +1370,72 @@ EOT;
             }
         } else {
             $this->info('  ✓ Python PDF libraries are already installed');
+        }
+    }
+    
+    /**
+     * Install qpdf for high-quality PDF manipulation
+     */
+    protected function installQpdf(): void
+    {
+        $this->warn('');
+        $this->warn('qpdf is highly recommended for high-quality PDF split/merge operations.');
+        
+        if ($this->confirm('Do you want to install qpdf?', true)) {
+            $os = $this->detectOS();
+            
+            $this->info('Installing qpdf...');
+            
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y qpdf'
+                    ];
+                    break;
+                    
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = [
+                        'sudo yum install -y qpdf'
+                    ];
+                    break;
+                    
+                case 'macos':
+                    $commands = ['brew install qpdf'];
+                    break;
+                    
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install qpdf manually:');
+                    $this->info('  Ubuntu/Debian: sudo apt-get install qpdf');
+                    $this->info('  CentOS/RHEL: sudo yum install qpdf');
+                    $this->info('  macOS: brew install qpdf');
+                    $this->info('  Download: https://github.com/qpdf/qpdf');
+                    return;
+            }
+            
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+                
+                if (!$process->isSuccessful()) {
+                    $this->error('Failed to install qpdf. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+            
+            $this->info('  ✓ qpdf installed successfully');
+            $this->info('  qpdf provides lossless PDF manipulation for split, merge, and rotate operations.');
+        } else {
+            $this->info('Skipping qpdf installation.');
+            $this->warn('Note: PDF split/merge will fall back to lower quality methods without qpdf.');
         }
     }
     

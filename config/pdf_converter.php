@@ -24,10 +24,10 @@ return [
     |
     */
     'converters' => [
-        'v11' => storage_path('app/temp/pymupdf_converter_v11.py'),
-        'v10' => storage_path('app/temp/pymupdf_converter_v10.py'),
-        'v7' => storage_path('app/temp/pymupdf_converter_v7.py'),
-        'v2' => storage_path('app/temp/pymupdf_converter_v2.py'),
+        'v11' => resource_path('scripts/python/pymupdf_converter_v11.py'),
+        'v10' => resource_path('scripts/python/pymupdf_converter_v10.py'),
+        'v7' => resource_path('scripts/python/pymupdf_converter_v7.py'),
+        'v2' => resource_path('scripts/python/pymupdf_converter_v2.py'),
     ],
 
     /*

@@ -57,10 +57,21 @@ class CreateTenant extends Command
         }
         
         try {
+            // Générer un slug unique pour le tenant
+            $baseSlug = Str::slug($name);
+            $slug = $baseSlug;
+            $counter = 1;
+            
+            // Vérifier l'unicité du slug
+            while (Tenant::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $counter;
+                $counter++;
+            }
+            
             // Créer le tenant avec les valeurs par défaut du plan gratuit
             $tenant = Tenant::create([
                 'name' => $name,
-                'slug' => Str::slug($name),
+                'slug' => $slug,
                 'domain' => $domain,
                 'subscription_plan' => 'free',
                 'settings' => $this->getDefaultSettings(),

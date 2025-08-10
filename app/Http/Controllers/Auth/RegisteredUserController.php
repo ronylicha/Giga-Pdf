@@ -43,15 +43,26 @@ class RegisteredUserController extends Controller
         DB::beginTransaction();
 
         try {
+            // Generate a unique slug for the tenant
+            $baseSlug = Str::slug($request->tenant_name);
+            $slug = $baseSlug;
+            $counter = 1;
+            
+            // Keep checking until we find a unique slug
+            while (Tenant::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $counter;
+                $counter++;
+            }
+            
             // Create the tenant first
             $tenant = Tenant::create([
                 'name' => $request->tenant_name,
-                'slug' => Str::slug($request->tenant_name),
+                'slug' => $slug,
                 'max_storage_gb' => 1, // 1GB storage per account
-                'max_users' => 999999, // Unlimited users
+                'max_users' => 5, // 5 users par défaut
                 'max_file_size_mb' => 25, // 25MB per file
                 'settings' => [
-                    'max_users' => 999999,
+                    'max_users' => 5,
                     'max_storage_gb' => 1,
                     'max_file_size_mb' => 25,
                     'features' => [
@@ -97,11 +108,17 @@ class RegisteredUserController extends Controller
                 'email_verified_at' => now(), // Auto-verify for tenant admins
             ]);
             
-            // Set team context for Spatie permissions
-            app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($tenant->id);
+            // Create or get the tenant-admin role for this specific tenant (team)
+            $role = \Spatie\Permission\Models\Role::firstOrCreate(
+                [
+                    'name' => 'tenant-admin',
+                    'team_id' => $tenant->id,
+                    'guard_name' => 'web'
+                ]
+            );
             
-            // Assign the tenant-admin role using Spatie permissions
-            $user->assignRole('tenant-admin');
+            // Assign the role to the user with team context
+            $user->assignRole($role);
 
             DB::commit();
 
@@ -114,8 +131,13 @@ class RegisteredUserController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             
+            \Log::error('Registration failed: ' . $e->getMessage(), [
+                'exception' => $e,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return back()->withErrors([
-                'tenant_name' => 'Failed to create organization. Please try again.',
+                'tenant_name' => 'Failed to create organization: ' . $e->getMessage(),
             ])->withInput($request->except('password', 'password_confirmation'));
         }
     }

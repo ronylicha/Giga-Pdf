@@ -47,10 +47,13 @@ class RegisteredUserController extends Controller
             $tenant = Tenant::create([
                 'name' => $request->tenant_name,
                 'slug' => Str::slug($request->tenant_name),
+                'max_storage_gb' => 1, // 1GB storage per account
+                'max_users' => 999999, // Unlimited users
+                'max_file_size_mb' => 25, // 25MB per file
                 'settings' => [
-                    'max_users' => 999999, // Unlimited users
-                    'max_storage_gb' => 1, // 1GB storage per account
-                    'max_file_size_mb' => 25, // 25MB per file
+                    'max_users' => 999999,
+                    'max_storage_gb' => 1,
+                    'max_file_size_mb' => 25,
                     'features' => [
                         'ocr' => true,
                         'conversion' => true,
@@ -66,7 +69,22 @@ class RegisteredUserController extends Controller
                         'extract' => true,
                     ],
                 ],
+                'features' => [
+                    'ocr' => true,
+                    'conversion' => true,
+                    'editor' => true,
+                    'sharing' => true,
+                    'pdf_tools' => true,
+                    'merge' => true,
+                    'split' => true,
+                    'compress' => true,
+                    'watermark' => true,
+                    'encrypt' => true,
+                    'rotate' => true,
+                    'extract' => true,
+                ],
                 'subscription_plan' => 'free',
+                'is_active' => true,
             ]);
 
             // Create the user as tenant admin
@@ -75,9 +93,15 @@ class RegisteredUserController extends Controller
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'role' => 'tenant-admin', // Make the first user tenant admin
+                'is_active' => true, // Ensure user is active
                 'email_verified_at' => now(), // Auto-verify for tenant admins
             ]);
+            
+            // Set team context for Spatie permissions
+            app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($tenant->id);
+            
+            // Assign the tenant-admin role using Spatie permissions
+            $user->assignRole('tenant-admin');
 
             DB::commit();
 

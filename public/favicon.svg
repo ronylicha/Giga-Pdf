@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background circle -->
+    <circle cx="16" cy="16" r="15" fill="#ffffff" stroke="#2E3A8C" stroke-width="1"/>
+    
+    <!-- PDF Icon simplified for small size -->
+    <g transform="translate(8, 6)">
+        <!-- Document shape -->
+        <path d="M2 0h10l4 4v16H2V0z" fill="#2E3A8C"/>
+        
+        <!-- Folded corner -->
+        <path d="M12 0v4h4l-4-4z" fill="#E97837"/>
+        
+        <!-- PDF text (simplified) -->
+        <text x="8" y="14" font-family="Arial, sans-serif" font-size="6" font-weight="bold" text-anchor="middle" fill="white">PDF</text>
+    </g>
+</svg>

@@ -2986,14 +2986,14 @@ class DocumentController extends Controller
                 'has_images' => strpos($html, '<img') !== false
             ]);
             
-            // Process and embed all images as base64
-            $html = $this->processImagesForPdf($html, $document);
+            // Extract only the page content (without toolbar, etc.)
+            $cleanedHtml = $this->extractPageContentImproved($html);
             
-            // Extract only the page containers from the HTML
-            $cleanedHtml = $this->extractPageContent($html);
+            // Remove any CSS transforms that could cause scaling issues
+            $cleanedHtml = $this->removeTransformations($cleanedHtml);
             
-            // Process images again on cleaned HTML to ensure they're embedded
-            $cleanedHtml = $this->processImagesForPdf($cleanedHtml, $document);
+            // Process and embed all images as base64 AFTER extraction
+            $processedHtml = $this->processImagesForPdfImproved($cleanedHtml, $document);
             
             // Get original PDF dimensions if available
             $originalPdfPath = Storage::path($document->stored_name);
@@ -3008,15 +3008,23 @@ class DocumentController extends Controller
                 ['width' => $originalDimensions['width_mm'], 'height' => $originalDimensions['height_mm']] :
                 $this->extractPageDimensions($html);
             
-            // Create final HTML document
-            $finalHtml = $this->buildFinalHtml($cleanedHtml, $dimensions);
+            // Create final HTML document with improved structure
+            // Note: buildFinalHtmlImproved now analyzes and uses actual content dimensions
+            $finalHtml = $this->buildFinalHtmlImproved($processedHtml, $dimensions);
             
             // Save to temp file
             $htmlFile = tempnam(sys_get_temp_dir(), 'edited_') . '.html';
             file_put_contents($htmlFile, $finalHtml);
             
-            // Generate PDF
-            $pdfFile = $this->generatePdfFromHtml($htmlFile, $dimensions);
+            // Extract actual dimensions from the final HTML for PDF generation
+            $contentBounds = $this->analyzeContentBounds($finalHtml);
+            $actualDimensions = [
+                'width' => round($contentBounds['width'] * 25.4 / 96),
+                'height' => round($contentBounds['height'] * 25.4 / 96)
+            ];
+            
+            // Generate PDF with actual content dimensions to avoid white bands
+            $pdfFile = $this->generatePdfFromHtmlImproved($htmlFile, $actualDimensions);
             
             if (!$pdfFile) {
                 throw new Exception('Failed to generate PDF');
@@ -3569,6 +3577,683 @@ HTML;
             $html
         );
     }
+    /**
+     * Improved method to extract only page content from HTML
+     */
+    private function extractPageContentImproved($html)
+    {
+        try {
+            $dom = new \DOMDocument();
+            libxml_use_internal_errors(true);
+            
+            // Load HTML with UTF-8 encoding, preserving entities
+            $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');
+            $dom->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            libxml_clear_errors();
+            
+            $xpath = new \DOMXPath($dom);
+            
+            // First priority: Find the pdfContent div directly
+            $pdfContent = $xpath->query("//div[@id='pdfContent']");
+            if ($pdfContent->length > 0) {
+                // Get inner HTML of pdfContent, preserving all attributes
+                $content = '';
+                foreach ($pdfContent->item(0)->childNodes as $child) {
+                    $content .= $dom->saveHTML($child);
+                }
+                
+                // Post-process to fix image tags with empty src
+                $content = $this->fixEmptyImageSources($content);
+                
+                Log::info('Extracted content from pdfContent div', ['length' => strlen($content)]);
+                return $content;
+            }
+            
+            // Second priority: Find all page containers
+            $pageContainers = $xpath->query("//div[contains(@class, 'pdf-page-container')]");
+            if ($pageContainers->length > 0) {
+                $content = '';
+                
+                // Check if this is genuinely a multi-page document
+                // by looking at the position or explicit page numbers
+                $isMultiPage = false;
+                if ($pageContainers->length > 1) {
+                    // Check if pages have different top positions (indicating separate pages)
+                    foreach ($pageContainers as $container) {
+                        $style = $container->getAttribute('style');
+                        if (preg_match('/top:\s*(\d+)px/i', $style, $match)) {
+                            $top = intval($match[1]);
+                            if ($top > 1200) { // If top position > typical page height
+                                $isMultiPage = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // If it's a single page document, merge containers to avoid breaks
+                if ($pageContainers->length == 1 || !$isMultiPage) {
+                    $content = '<div class="pdf-page-container" style="position: relative;">';
+                    foreach ($pageContainers as $container) {
+                        // Extract only the inner content
+                        foreach ($container->childNodes as $child) {
+                            $content .= $dom->saveHTML($child);
+                        }
+                    }
+                    $content .= '</div>';
+                } else {
+                    // For multi-page documents, preserve the page structure
+                    foreach ($pageContainers as $container) {
+                        $content .= $dom->saveHTML($container) . "\n";
+                    }
+                }
+                
+                // Post-process to fix image tags
+                $content = $this->fixEmptyImageSources($content);
+                
+                Log::info('Extracted content from page containers', [
+                    'pages' => $pageContainers->length,
+                    'is_multi_page' => $isMultiPage
+                ]);
+                return $content;
+            }
+            
+            // Fallback: Get body content but exclude toolbar and status bar
+            $body = $xpath->query("//body")->item(0);
+            if ($body) {
+                $content = '';
+                foreach ($body->childNodes as $child) {
+                    if ($child->nodeType === XML_ELEMENT_NODE) {
+                        $id = $child->getAttribute('id');
+                        $class = $child->getAttribute('class');
+                        
+                        // Skip toolbar, status bar, and other non-content elements
+                        if ($id === 'editorFrame' || 
+                            strpos($class, 'editor-toolbar') !== false || 
+                            strpos($class, 'status-bar') !== false ||
+                            strpos($class, 'loading-overlay') !== false) {
+                            continue;
+                        }
+                        
+                        $content .= $dom->saveHTML($child);
+                    }
+                }
+                
+                // Post-process to fix image tags
+                $content = $this->fixEmptyImageSources($content);
+                
+                return $content;
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('DOM parsing failed in extractPageContentImproved', ['error' => $e->getMessage()]);
+        }
+        
+        // Last resort: return cleaned HTML
+        $cleanedHtml = preg_replace('/<div[^>]*class=["\'][^"\']*(?:editor-toolbar|status-bar|loading-overlay)[^"\']*["\'][^>]*>.*?<\/div>/is', '', $html);
+        return $this->fixEmptyImageSources($cleanedHtml);
+    }
+    
+    /**
+     * Remove CSS transformations that can cause scaling issues in PDF
+     */
+    private function removeTransformations($html)
+    {
+        // Remove transform properties from style attributes
+        $html = preg_replace_callback(
+            '/style="([^"]+)"/i',
+            function($matches) {
+                $style = $matches[1];
+                
+                // Remove transform properties
+                $style = preg_replace('/transform\s*:\s*[^;]+;?/i', '', $style);
+                $style = preg_replace('/transform-origin\s*:\s*[^;]+;?/i', '', $style);
+                $style = preg_replace('/zoom\s*:\s*[^;]+;?/i', '', $style);
+                $style = preg_replace('/-webkit-transform\s*:\s*[^;]+;?/i', '', $style);
+                $style = preg_replace('/-moz-transform\s*:\s*[^;]+;?/i', '', $style);
+                $style = preg_replace('/-ms-transform\s*:\s*[^;]+;?/i', '', $style);
+                $style = preg_replace('/-o-transform\s*:\s*[^;]+;?/i', '', $style);
+                
+                // Clean up multiple semicolons and spaces
+                $style = preg_replace('/;\s*;+/', ';', $style);
+                $style = preg_replace('/^\s*;|;\s*$/', '', $style);
+                $style = trim($style);
+                
+                return 'style="' . $style . '"';
+            },
+            $html
+        );
+        
+        // For images with scale(0.5), we need to adjust their dimensions
+        $html = preg_replace_callback(
+            '/<img([^>]*)style="([^"]*)"([^>]*)>/i',
+            function($matches) {
+                $beforeStyle = $matches[1];
+                $style = $matches[2];
+                $afterStyle = $matches[3];
+                
+                // Check if there was a scale transform
+                if (preg_match('/width:\s*(\d+(?:\.\d+)?)px/i', $style, $widthMatch) &&
+                    preg_match('/height:\s*(\d+(?:\.\d+)?)px/i', $style, $heightMatch)) {
+                    
+                    // Adjust dimensions if they seem to be scaled (too large)
+                    $width = floatval($widthMatch[1]);
+                    $height = floatval($heightMatch[1]);
+                    
+                    // If dimensions are too large (likely scaled), reduce them
+                    if ($width > 800 || $height > 1100) {
+                        $width = $width * 0.5;
+                        $height = $height * 0.5;
+                        
+                        $style = preg_replace('/width:\s*\d+(?:\.\d+)?px/i', 'width:' . $width . 'px', $style);
+                        $style = preg_replace('/height:\s*\d+(?:\.\d+)?px/i', 'height:' . $height . 'px', $style);
+                    }
+                }
+                
+                return '<img' . $beforeStyle . 'style="' . $style . '"' . $afterStyle . '>';
+            },
+            $html
+        );
+        
+        return $html;
+    }
+    
+    /**
+     * Fix image tags with empty src attributes by looking for data attributes or class hints
+     */
+    private function fixEmptyImageSources($html)
+    {
+        // Look for images with empty src and try to infer the correct source
+        return preg_replace_callback(
+            '/<img([^>]*?)src=["\']\s*["\']([^>]*)>/i',
+            function($matches) {
+                $attributes = $matches[1] . $matches[2];
+                
+                // Try to extract image identifier from class or id
+                if (preg_match('/(?:class|id)=["\'][^"\']*?(p\d+_vec\d+)[^"\']*["\']/', $attributes, $idMatch)) {
+                    $imageId = $idMatch[1];
+                    return '<img' . $matches[1] . 'src="' . $imageId . '.png"' . $matches[2] . '>';
+                }
+                
+                // Check for data-original or data-src attributes
+                if (preg_match('/data-(?:src|original)=["\']([^"\']+)["\']/', $attributes, $dataSrcMatch)) {
+                    return '<img' . $matches[1] . 'src="' . $dataSrcMatch[1] . '"' . $matches[2] . '>';
+                }
+                
+                // Return original if no fix needed
+                return $matches[0];
+            },
+            $html
+        );
+    }
+    
+    /**
+     * Improved method to process images for PDF with better path resolution
+     */
+    private function processImagesForPdfImproved($html, $document)
+    {
+        // First, handle images with empty src attributes (common in vector graphics)
+        $html = preg_replace_callback(
+            '/<img([^>]*?)src=["\']?\s*["\']?([^>]*)>/i',
+            function($matches) use ($document) {
+                $attributes = $matches[1] . $matches[2];
+                
+                // Check if there's a data-src or other attribute that might contain the actual source
+                if (preg_match('/data-src=["\']([^"\']+)["\']/', $attributes, $dataSrcMatch)) {
+                    return '<img' . $matches[1] . 'src="' . $dataSrcMatch[1] . '"' . $matches[2] . '>';
+                }
+                
+                // Check for class names that might indicate vector images
+                if (preg_match('/class=["\'][^"\']*vec[^"\']*["\']/', $attributes)) {
+                    // Try to find corresponding vector file
+                    if (preg_match('/p\d+_vec\d+/', $attributes, $vecMatch)) {
+                        $vecFilename = $vecMatch[0] . '.png';
+                        $vecPath = storage_path('app/documents/' . $document->id . '/' . $vecFilename);
+                        if (file_exists($vecPath)) {
+                            $imageData = file_get_contents($vecPath);
+                            $base64 = base64_encode($imageData);
+                            return '<img' . $matches[1] . 'src="data:image/png;base64,' . $base64 . '"' . $matches[2] . '>';
+                        }
+                    }
+                }
+                
+                // Return original if no modifications needed
+                return $matches[0];
+            },
+            $html
+        );
+        
+        // Then handle normal images with src attributes
+        return preg_replace_callback(
+            '/<img([^>]*?)src=["\']?([^"\'>\s]+)["\']?([^>]*)>/i',
+            function($matches) use ($document) {
+                $beforeSrc = $matches[1];
+                $src = trim($matches[2]);
+                $afterSrc = $matches[3];
+                
+                // Skip if already a data URI
+                if (strpos($src, 'data:') === 0) {
+                    return $matches[0];
+                }
+                
+                // Skip if src is empty or just whitespace
+                if (empty($src)) {
+                    return $matches[0];
+                }
+                
+                $imageData = null;
+                $mimeType = 'image/png';
+                
+                // Try to fetch external images
+                if (preg_match('/^https?:\/\//i', $src)) {
+                    try {
+                        $context = stream_context_create([
+                            'http' => [
+                                'timeout' => 5,
+                                'user_agent' => 'Mozilla/5.0 (Compatible; PDF Converter)'
+                            ]
+                        ]);
+                        $imageData = @file_get_contents($src, false, $context);
+                    } catch (\Exception $e) {
+                        Log::warning('Could not fetch external image', ['src' => $src, 'error' => $e->getMessage()]);
+                    }
+                } else {
+                    // Handle local images
+                    $filename = basename(parse_url($src, PHP_URL_PATH));
+                    
+                    // If filename is empty, try to extract from the src
+                    if (empty($filename) && preg_match('/([^\/]+\.(png|jpg|jpeg|gif|svg|webp))$/i', $src, $fileMatch)) {
+                        $filename = $fileMatch[1];
+                    }
+                    
+                    // Build comprehensive list of paths to check
+                    $possiblePaths = [
+                        // Document-specific directories
+                        storage_path('app/documents/' . $document->id . '/' . $filename),
+                        storage_path('app/documents/' . $document->tenant_id . '/' . $document->id . '/' . $filename),
+                        storage_path('app/' . dirname($document->stored_name) . '/' . $filename),
+                        
+                        // Temp directories
+                        sys_get_temp_dir() . '/' . $filename,
+                        sys_get_temp_dir() . '/pdf_images/' . $filename,
+                        storage_path('app/temp/' . $filename),
+                        
+                        // Public directories
+                        public_path('storage/documents/' . $document->id . '/' . $filename),
+                        public_path('documents/' . $document->id . '/' . $filename),
+                        public_path('storage/' . $filename),
+                        public_path($filename),
+                    ];
+                    
+                    // Check for vector images with pattern p#_vec#.png
+                    if (preg_match('/p\d+_vec\d+/', $filename)) {
+                        array_unshift($possiblePaths, storage_path('app/documents/' . $document->id . '/' . $filename));
+                    }
+                    
+                    // If src contains a path, also try the full path
+                    if (strpos($src, '/') !== false) {
+                        $cleanPath = ltrim($src, '/');
+                        array_unshift($possiblePaths, public_path($cleanPath));
+                        array_unshift($possiblePaths, storage_path('app/' . $cleanPath));
+                        
+                        // If it's a route URL, extract the filename
+                        if (preg_match('/documents\/\d+\/assets\/(.+)$/', $src, $urlMatch)) {
+                            $assetFilename = $urlMatch[1];
+                            array_unshift($possiblePaths, storage_path('app/documents/' . $document->id . '/' . $assetFilename));
+                        }
+                    }
+                    
+                    // Remove duplicates and check each path
+                    $possiblePaths = array_unique($possiblePaths);
+                    
+                    foreach ($possiblePaths as $path) {
+                        if (file_exists($path) && is_readable($path)) {
+                            $imageData = file_get_contents($path);
+                            $mimeType = mime_content_type($path) ?: 'image/png';
+                            Log::info('Image found and embedded', [
+                                'src' => $src,
+                                'path' => $path,
+                                'size' => strlen($imageData),
+                                'mime' => $mimeType
+                            ]);
+                            break;
+                        }
+                    }
+                    
+                    if (!$imageData) {
+                        Log::warning('Image not found after checking all paths', [
+                            'src' => $src,
+                            'filename' => $filename,
+                            'document_id' => $document->id,
+                            'paths_checked' => count($possiblePaths)
+                        ]);
+                    }
+                }
+                
+                // If we have image data, convert to base64
+                if ($imageData) {
+                    $base64 = base64_encode($imageData);
+                    return "<img{$beforeSrc}src=\"data:{$mimeType};base64,{$base64}\"{$afterSrc}>";
+                }
+                
+                // Return original if image not found
+                return $matches[0];
+            },
+            $html
+        );
+    }
+    
+    /**
+     * Improved method to build final HTML with better structure
+     */
+    private function buildFinalHtmlImproved($content, $dimensions)
+    {
+        // Analyser le contenu pour obtenir les dimensions réelles
+        $contentBounds = $this->analyzeContentBounds($content);
+        
+        // Utiliser les dimensions du contenu réel au lieu des dimensions par défaut
+        // Cela élimine les bandes blanches de 25%
+        $contentWidthPx = $contentBounds['width'];
+        $contentHeightPx = $contentBounds['height'];
+        
+        // Convertir en mm pour wkhtmltopdf
+        $width = round($contentWidthPx * 25.4 / 96);
+        $height = round($contentHeightPx * 25.4 / 96);
+        
+        return <<<HTML
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Export</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        @page {
+            size: {$width}mm {$height}mm;
+            margin: 0;
+        }
+        
+        html, body {
+            width: {$contentWidthPx}px;
+            height: {$contentHeightPx}px;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: white;
+            border: none;
+            box-shadow: none;
+        }
+        
+        /* Page containers - use actual content dimensions */
+        .pdf-page-container {
+            width: {$contentWidthPx}px;
+            height: {$contentHeightPx}px;
+            position: relative;
+            page-break-inside: avoid;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            background: white;
+            border: none;
+            box-shadow: none;
+        }
+        
+        /* For single page documents - avoid all breaks */
+        .pdf-page-container:only-child {
+            page-break-after: avoid;
+            page-break-before: avoid;
+        }
+        
+        /* For multi-page documents - allow page breaks between containers */
+        .pdf-page-container:not(:only-child) {
+            page-break-after: always;
+        }
+        
+        .pdf-page-container:not(:only-child):last-child {
+            page-break-after: auto;
+        }
+        
+        /* Content inside containers should never break */
+        .pdf-content, #pdfContent {
+            page-break-inside: avoid;
+        }
+        
+        /* Preserve ALL absolute positioning exactly as is */
+        .pdf-text, .pdf-element, .pdf-image, 
+        div[style*="position: absolute"],
+        img[style*="position: absolute"],
+        span[style*="position: absolute"] {
+            /* Let inline styles handle positioning */
+        }
+        
+        /* Images - keep original positioning */
+        img {
+            display: block;
+            page-break-inside: avoid;
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* For absolutely positioned images, preserve their dimensions */
+        img[style*="position: absolute"] {
+            max-width: none;
+            height: auto;
+        }
+        
+        /* Tables */
+        table {
+            border-collapse: collapse;
+            page-break-inside: avoid;
+        }
+        
+        /* Override any scaling that might come from the HTML */
+        * {
+            transform: none !important;
+            zoom: 1 !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+            filter: none !important;
+            -webkit-box-shadow: none !important;
+            -moz-box-shadow: none !important;
+            outline: none !important;
+        }
+        
+        /* Remove any shadows from images and divs */
+        img, div {
+            box-shadow: none !important;
+            border: none !important;
+            outline: none !important;
+        }
+        
+        /* Print-specific styles */
+        @media print {
+            html, body {
+                width: {$contentWidthPx}px;
+                height: {$contentHeightPx}px;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+            
+            .pdf-page-container {
+                width: {$contentWidthPx}px;
+                height: {$contentHeightPx}px;
+            }
+        }
+    </style>
+</head>
+<body>
+{$content}
+</body>
+</html>
+HTML;
+    }
+    
+    /**
+     * Analyze content to find actual bounds
+     */
+    private function analyzeContentBounds($html)
+    {
+        $maxWidth = 794; // Default A4 width in pixels at 96 DPI
+        $maxHeight = 1123; // Default A4 height in pixels at 96 DPI
+        
+        // Try to find page container dimensions first
+        if (preg_match('/<div[^>]*class=["\'][^"\']*pdf-page-container[^"\']*["\'][^>]*style=["\']([^"\']+)["\']/', $html, $match)) {
+            $style = $match[1];
+            
+            if (preg_match('/width:\s*(\d+(?:\.\d+)?)px/', $style, $widthMatch)) {
+                $maxWidth = floatval($widthMatch[1]);
+            }
+            if (preg_match('/height:\s*(\d+(?:\.\d+)?)px/', $style, $heightMatch)) {
+                $maxHeight = floatval($heightMatch[1]);
+            }
+        }
+        
+        // Also check for specific background divs with fixed dimensions
+        if (preg_match_all('/<div[^>]*class=["\'][^"\']*p\d+_[^"\']*["\'][^>]*style=["\']([^"\']+)["\']/', $html, $matches)) {
+            foreach ($matches[1] as $style) {
+                if (preg_match('/width:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                    $width = floatval($m[1]);
+                    $maxWidth = max($maxWidth, $width);
+                }
+                if (preg_match('/height:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                    $height = floatval($m[1]);
+                    $maxHeight = max($maxHeight, $height);
+                }
+            }
+        }
+        
+        // Check for absolutely positioned elements to find actual content bounds
+        $actualMaxX = 0;
+        $actualMaxY = 0;
+        $hasAbsoluteElements = false;
+        
+        if (preg_match_all('/style=["\']([^"\']*)["\']/', $html, $matches)) {
+            foreach ($matches[1] as $style) {
+                // Only process styles with absolute positioning
+                if (strpos($style, 'position: absolute') === false && 
+                    strpos($style, 'position:absolute') === false) {
+                    continue;
+                }
+                
+                $hasAbsoluteElements = true;
+                $left = 0;
+                $top = 0;
+                $width = 0;
+                $height = 0;
+                
+                if (preg_match('/left:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                    $left = floatval($m[1]);
+                }
+                if (preg_match('/top:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                    $top = floatval($m[1]);
+                }
+                if (preg_match('/width:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                    $width = floatval($m[1]);
+                }
+                if (preg_match('/height:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                    $height = floatval($m[1]);
+                }
+                
+                // Track the furthest extent of content
+                if ($width > 0 || $height > 0) {
+                    $actualMaxX = max($actualMaxX, $left + $width);
+                    $actualMaxY = max($actualMaxY, $top + $height);
+                }
+            }
+        }
+        
+        // If we found absolute positioned elements, use their bounds
+        if ($hasAbsoluteElements && $actualMaxX > 0 && $actualMaxY > 0) {
+            // Use actual content bounds WITHOUT any margin to eliminate shadows
+            // No extra pixels = no shadows
+            $maxWidth = $actualMaxX;
+            $maxHeight = $actualMaxY;
+        }
+        
+        // Cap dimensions to reasonable maximum (A3 size)
+        $maxWidth = min($maxWidth, 1190); // A3 width at 96 DPI
+        $maxHeight = min($maxHeight, 1684); // A3 height at 96 DPI
+        
+        return [
+            'width' => $maxWidth,
+            'height' => $maxHeight
+        ];
+    }
+    
+    /**
+     * Improved PDF generation with better wkhtmltopdf settings
+     */
+    private function generatePdfFromHtmlImproved($htmlFile, $dimensions)
+    {
+        $pdfFile = tempnam(sys_get_temp_dir(), 'output_') . '.pdf';
+        
+        $width = $dimensions['width'];
+        $height = $dimensions['height'];
+        
+        // Calculate pixel dimensions for viewport
+        $widthPx = round($width * 96 / 25.4);
+        $heightPx = round($height * 96 / 25.4);
+        
+        // wkhtmltopdf command optimized for exact positioning without shadows
+        $command = sprintf(
+            'wkhtmltopdf ' .
+            '--page-width %dmm --page-height %dmm ' .
+            '--margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 0 ' .
+            '--disable-smart-shrinking ' .
+            '--print-media-type ' .
+            '--enable-local-file-access ' .
+            '--load-error-handling ignore ' .
+            '--load-media-error-handling ignore ' .
+            '--encoding UTF-8 ' .
+            '--dpi 96 ' . // Screen DPI for 1:1 mapping
+            '--image-quality 100 ' .
+            '--image-dpi 96 ' .
+            '--javascript-delay 1000 ' . // 1 second delay for images to load
+            '--no-stop-slow-scripts ' .
+            '--enable-javascript ' .
+            '--viewport-size %dx%d ' . // Exact viewport size
+            '--no-outline ' . // Disable outline/border
+            '--no-background ' . // Disable page background (we set our own)
+            '--background ' . // But enable HTML background
+            '%s %s 2>&1',
+            $width,
+            $height,
+            $widthPx,
+            $heightPx,
+            escapeshellarg($htmlFile),
+            escapeshellarg($pdfFile)
+        );
+        
+        exec($command, $output, $returnCode);
+        
+        if ($returnCode === 0 && file_exists($pdfFile) && filesize($pdfFile) > 0) {
+            Log::info('PDF generated successfully', [
+                'size' => filesize($pdfFile),
+                'dimensions' => $dimensions,
+                'viewport' => $widthPx . 'x' . $heightPx
+            ]);
+            return $pdfFile;
+        }
+        
+        // Log detailed error information
+        Log::error('wkhtmltopdf failed', [
+            'command' => $command,
+            'output' => implode("\n", $output),
+            'return_code' => $returnCode,
+            'html_file_exists' => file_exists($htmlFile),
+            'html_file_size' => file_exists($htmlFile) ? filesize($htmlFile) : 0
+        ]);
+        
+        return null;
+    }
+    
     /**
      * Transform relative image paths in HTML to accessible asset URLs.
      */

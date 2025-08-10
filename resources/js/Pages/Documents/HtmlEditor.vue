@@ -155,7 +155,21 @@ const saveDocument = async () => {
 const exportAsPdf = async () => {
     try {
         const iframe = editorFrame.value;
-        const content = iframe.contentDocument.getElementById('pdfContent').innerHTML;
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        
+        // Get only the content from pdfContent div
+        const pdfContentDiv = iframeDoc.getElementById('pdfContent');
+        if (!pdfContentDiv) {
+            showToast('Erreur: Contenu PDF non trouvé', 'error');
+            return;
+        }
+        
+        // Get the inner HTML (just the content, not the container itself)
+        const content = pdfContentDiv.innerHTML;
+        
+        // Log for debugging
+        console.log('Exporting PDF with content length:', content.length);
+        console.log('Has images:', content.includes('<img'));
         
         // Create a form to submit the HTML content
         const form = document.createElement('form');
@@ -170,12 +184,15 @@ const exportAsPdf = async () => {
         csrfToken.value = document.querySelector('meta[name="csrf-token"]')?.content || '';
         form.appendChild(csrfToken);
         
-        // Add HTML content
+        // Add HTML content (only the inner content)
         const htmlInput = document.createElement('input');
         htmlInput.type = 'hidden';
         htmlInput.name = 'html';
         htmlInput.value = content;
         form.appendChild(htmlInput);
+        
+        // Show loading toast
+        showToast('Génération du PDF en cours...', 'success');
         
         // Submit form - will redirect to documents list
         document.body.appendChild(form);

@@ -34,10 +34,8 @@ class TenantManagementController extends Controller
             });
         }
         
-        // Filter by plan
-        if ($request->plan) {
-            $query->where('subscription_plan', $request->plan);
-        }
+        // Tous les tenants sont en plan gratuit
+        // Pas de filtre par plan nécessaire
         
         // Filter by status
         if ($request->status === 'active') {
@@ -75,10 +73,7 @@ class TenantManagementController extends Controller
             'stats' => $stats,
             'filters' => $request->only(['search', 'plan', 'status', 'sort_by', 'sort_dir']),
             'plans' => [
-                'free' => 'Gratuit',
-                'starter' => 'Starter',
-                'professional' => 'Professionnel',
-                'enterprise' => 'Entreprise',
+                'free' => 'Gratuit (toutes fonctionnalités)',
             ],
         ]);
     }
@@ -134,31 +129,10 @@ class TenantManagementController extends Controller
     public function create()
     {
         return Inertia::render('SuperAdmin/Tenants/Create', [
-            'plans' => [
-                'free' => [
-                    'name' => 'Gratuit',
-                    'max_users' => 3,
-                    'max_storage_gb' => 1,
-                    'max_file_size_mb' => 10,
-                ],
-                'starter' => [
-                    'name' => 'Starter',
-                    'max_users' => 10,
-                    'max_storage_gb' => 10,
-                    'max_file_size_mb' => 50,
-                ],
-                'professional' => [
-                    'name' => 'Professionnel',
-                    'max_users' => 50,
-                    'max_storage_gb' => 100,
-                    'max_file_size_mb' => 100,
-                ],
-                'enterprise' => [
-                    'name' => 'Entreprise',
-                    'max_users' => -1, // unlimited
-                    'max_storage_gb' => 1000,
-                    'max_file_size_mb' => 500,
-                ],
+            'defaultLimits' => [
+                'max_users' => 5,
+                'max_storage_gb' => 1,
+                'max_file_size_mb' => 25,
             ],
         ]);
     }
@@ -172,7 +146,7 @@ class TenantManagementController extends Controller
             'name' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:tenants,slug|regex:/^[a-z0-9-]+$/',
             'domain' => 'nullable|string|max:255|unique:tenants,domain',
-            'subscription_plan' => 'required|in:free,starter,professional,enterprise',
+            // Plan toujours gratuit
             'max_users' => 'required|integer|min:-1',
             'max_storage_gb' => 'required|numeric|min:0.1',
             'max_file_size_mb' => 'required|numeric|min:1',
@@ -191,7 +165,7 @@ class TenantManagementController extends Controller
                 'name' => $validated['name'],
                 'slug' => $validated['slug'],
                 'domain' => $validated['domain'],
-                'subscription_plan' => $validated['subscription_plan'],
+                'subscription_plan' => 'free',
                 'max_users' => $validated['max_users'],
                 'max_storage_gb' => $validated['max_storage_gb'],
                 'max_file_size_mb' => $validated['max_file_size_mb'],
@@ -201,7 +175,7 @@ class TenantManagementController extends Controller
                     'require_2fa' => false,
                     'default_language' => 'fr',
                 ],
-                'features' => $this->getFeaturesForPlan($validated['subscription_plan']),
+                'features' => $this->getDefaultFeatures(),
             ]);
             
             // Create admin user for the tenant
@@ -239,32 +213,6 @@ class TenantManagementController extends Controller
     {
         return Inertia::render('SuperAdmin/Tenants/Edit', [
             'tenant' => $tenant,
-            'plans' => [
-                'free' => [
-                    'name' => 'Gratuit',
-                    'max_users' => 3,
-                    'max_storage_gb' => 1,
-                    'max_file_size_mb' => 10,
-                ],
-                'starter' => [
-                    'name' => 'Starter',
-                    'max_users' => 10,
-                    'max_storage_gb' => 10,
-                    'max_file_size_mb' => 50,
-                ],
-                'professional' => [
-                    'name' => 'Professionnel',
-                    'max_users' => 50,
-                    'max_storage_gb' => 100,
-                    'max_file_size_mb' => 100,
-                ],
-                'enterprise' => [
-                    'name' => 'Entreprise',
-                    'max_users' => -1,
-                    'max_storage_gb' => 1000,
-                    'max_file_size_mb' => 500,
-                ],
-            ],
         ]);
     }
 
@@ -276,7 +224,7 @@ class TenantManagementController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'domain' => 'nullable|string|max:255|unique:tenants,domain,' . $tenant->id,
-            'subscription_plan' => 'required|in:free,starter,professional,enterprise',
+            // Plan toujours gratuit, pas de validation nécessaire
             'max_users' => 'required|integer|min:-1',
             'max_storage_gb' => 'required|numeric|min:0.1',
             'max_file_size_mb' => 'required|numeric|min:1',
@@ -297,12 +245,12 @@ class TenantManagementController extends Controller
         $tenant->update([
             'name' => $validated['name'],
             'domain' => $validated['domain'],
-            'subscription_plan' => $validated['subscription_plan'],
+            'subscription_plan' => 'free',
             'max_users' => $validated['max_users'],
             'max_storage_gb' => $validated['max_storage_gb'],
             'max_file_size_mb' => $validated['max_file_size_mb'],
             'subscription_expires_at' => $validated['subscription_expires_at'],
-            'features' => $this->getFeaturesForPlan($validated['subscription_plan']),
+            'features' => $this->getDefaultFeatures(),
         ]);
         
         // Handle activation/deactivation
@@ -350,6 +298,59 @@ class TenantManagementController extends Controller
             
             return back()->with('error', 'Erreur lors de la suppression: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Show form to edit tenant limits
+     */
+    public function editLimits(Tenant $tenant)
+    {
+        $tenant->loadCount('users');
+        $tenant->storage_used = $tenant->getStorageUsed();
+        
+        return Inertia::render('SuperAdmin/Tenants/EditLimits', [
+            'tenant' => $tenant,
+        ]);
+    }
+
+    /**
+     * Update tenant limits
+     */
+    public function updateLimits(Request $request, Tenant $tenant)
+    {
+        $validated = $request->validate([
+            'max_users' => 'required|integer|min:1',
+            'max_storage_gb' => 'required|numeric|min:0.1',
+            'max_file_size_mb' => 'required|numeric|min:1',
+        ]);
+        
+        // Vérifier si la réduction des limites ne viole pas l'utilisation actuelle
+        $currentUsersCount = $tenant->users()->count();
+        if ($validated['max_users'] < $currentUsersCount) {
+            return back()->withErrors([
+                'max_users' => "Impossible de réduire la limite d'utilisateurs en dessous du nombre actuel ({$currentUsersCount})."
+            ]);
+        }
+        
+        $currentStorageGB = $tenant->getStorageUsed() / (1024 * 1024 * 1024);
+        if ($validated['max_storage_gb'] < $currentStorageGB) {
+            return back()->withErrors([
+                'max_storage_gb' => sprintf(
+                    "Impossible de réduire la limite de stockage en dessous de l'utilisation actuelle (%.2f GB).",
+                    $currentStorageGB
+                )
+            ]);
+        }
+        
+        // Mettre à jour les limites
+        $tenant->update([
+            'max_users' => $validated['max_users'],
+            'max_storage_gb' => $validated['max_storage_gb'],
+            'max_file_size_mb' => $validated['max_file_size_mb'],
+        ]);
+        
+        return redirect()->route('super-admin.tenants.show', $tenant)
+            ->with('success', 'Les limites du tenant ont été mises à jour avec succès.');
     }
 
     /**
@@ -412,57 +413,31 @@ class TenantManagementController extends Controller
     }
 
     /**
-     * Get features for subscription plan
+     * Get default features (toutes les fonctionnalités disponibles)
      */
-    protected function getFeaturesForPlan(string $plan): array
+    protected function getDefaultFeatures(): array
     {
-        $features = [
-            'free' => [
-                'pdf_conversion' => true,
-                'pdf_editing' => false,
-                'ocr' => false,
-                'api_access' => false,
-                'priority_processing' => false,
-                'custom_branding' => false,
-                'advanced_security' => false,
-                'bulk_operations' => false,
-            ],
-            'starter' => [
-                'pdf_conversion' => true,
-                'pdf_editing' => true,
-                'ocr' => true,
-                'api_access' => false,
-                'priority_processing' => false,
-                'custom_branding' => false,
-                'advanced_security' => true,
-                'bulk_operations' => true,
-            ],
-            'professional' => [
-                'pdf_conversion' => true,
-                'pdf_editing' => true,
-                'ocr' => true,
-                'api_access' => true,
-                'priority_processing' => true,
-                'custom_branding' => true,
-                'advanced_security' => true,
-                'bulk_operations' => true,
-            ],
-            'enterprise' => [
-                'pdf_conversion' => true,
-                'pdf_editing' => true,
-                'ocr' => true,
-                'api_access' => true,
-                'priority_processing' => true,
-                'custom_branding' => true,
-                'advanced_security' => true,
-                'bulk_operations' => true,
-                'sso' => true,
-                'audit_logs' => true,
-                'dedicated_support' => true,
-            ],
+        return [
+            'pdf_conversion' => true,
+            'pdf_editing' => true,
+            'ocr' => true,
+            'api_access' => true,
+            'priority_processing' => true,
+            'custom_branding' => true,
+            'advanced_security' => true,
+            'bulk_operations' => true,
+            'sso' => true,
+            'audit_logs' => true,
+            'dedicated_support' => false,
+            'digital_signatures' => true,
+            'redaction' => true,
+            'collaboration' => true,
+            'advanced_editor' => true,
+            'batch_processing' => true,
+            'webhooks' => true,
+            'custom_integrations' => true,
+            'white_label' => true,
         ];
-        
-        return $features[$plan] ?? $features['free'];
     }
 
     /**

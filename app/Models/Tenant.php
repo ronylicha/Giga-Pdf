@@ -52,10 +52,10 @@ class Tenant extends Model
     protected $attributes = [
         'settings' => '{}',
         'features' => '[]',
-        'max_storage_gb' => 10,
+        'max_storage_gb' => 1,
         'max_users' => 5,
-        'max_file_size_mb' => 100,
-        'subscription_plan' => 'basic',
+        'max_file_size_mb' => 25,
+        'subscription_plan' => 'free',
         'is_active' => true,
     ];
     
@@ -140,46 +140,29 @@ class Tenant extends Model
      */
     public function getDefaultFeatures(): array
     {
-        return match($this->subscription_plan) {
-            'enterprise' => [
-                'unlimited_users',
-                'unlimited_storage',
-                'api_access',
-                'white_label',
-                'priority_support',
-                'advanced_security',
-                'custom_domain',
-                'sso',
-                'audit_logs',
-                'digital_signatures',
-                'ocr',
-                'redaction',
-                'collaboration',
-                'advanced_editor',
-                'batch_processing',
-                'webhooks',
-                'custom_integrations'
-            ],
-            'professional' => [
-                'api_access',
-                'priority_support',
-                'custom_domain',
-                'audit_logs',
-                'digital_signatures',
-                'ocr',
-                'redaction',
-                'collaboration',
-                'advanced_editor',
-                'batch_processing'
-            ],
-            'basic' => [
-                'basic_editor',
-                'basic_conversions',
-                'basic_sharing',
-                'email_support'
-            ],
-            default => ['basic_conversions']
-        };
+        // Toutes les fonctionnalités sont disponibles dans le plan gratuit
+        return [
+            'api_access',
+            'custom_domain',
+            'audit_logs',
+            'digital_signatures',
+            'ocr',
+            'redaction',
+            'collaboration',
+            'advanced_editor',
+            'batch_processing',
+            'basic_editor',
+            'basic_conversions',
+            'advanced_conversions',
+            'basic_sharing',
+            'advanced_sharing',
+            'email_support',
+            'webhooks',
+            'custom_integrations',
+            'advanced_security',
+            'sso',
+            'white_label'
+        ];
     }
     
     /**

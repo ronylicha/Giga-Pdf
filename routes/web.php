@@ -232,6 +232,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/tenants/{tenant}/suspend', [TenantManagementController::class, 'suspend'])->name('tenants.suspend');
             Route::post('/tenants/{tenant}/reactivate', [TenantManagementController::class, 'reactivate'])->name('tenants.reactivate');
             Route::get('/tenants/{tenant}/export', [TenantManagementController::class, 'export'])->name('tenants.export');
+            Route::get('/tenants/{tenant}/edit-limits', [TenantManagementController::class, 'editLimits'])->name('tenants.edit-limits');
+            Route::patch('/tenants/{tenant}/update-limits', [TenantManagementController::class, 'updateLimits'])->name('tenants.update-limits');
             
             // User management
             Route::get('/users', [\App\Http\Controllers\SuperAdmin\SuperAdminUsersController::class, 'index'])->name('users.index');

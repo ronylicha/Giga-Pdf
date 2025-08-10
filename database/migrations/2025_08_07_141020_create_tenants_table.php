@@ -17,11 +17,11 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->string('domain')->nullable()->unique();
             $table->json('settings')->nullable();
-            $table->integer('max_storage_gb')->default(10);
+            $table->integer('max_storage_gb')->default(1);
             $table->integer('max_users')->default(5);
-            $table->integer('max_file_size_mb')->default(100);
+            $table->integer('max_file_size_mb')->default(25);
             $table->json('features')->nullable();
-            $table->string('subscription_plan')->default('basic');
+            $table->string('subscription_plan')->default('free');
             $table->timestamp('subscription_expires_at')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();

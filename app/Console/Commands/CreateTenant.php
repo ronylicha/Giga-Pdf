@@ -19,7 +19,6 @@ class CreateTenant extends Command
     protected $signature = 'tenant:create 
                             {name : The name of the tenant}
                             {--domain= : The custom domain for the tenant}
-                            {--plan=basic : The subscription plan (basic, professional, enterprise)}
                             {--admin-email= : Email for the admin user}
                             {--admin-password= : Password for the admin user}';
 
@@ -40,7 +39,6 @@ class CreateTenant extends Command
         // Récupérer les paramètres
         $name = $this->argument('name');
         $domain = $this->option('domain');
-        $plan = $this->option('plan');
         
         // Demander les informations de l'admin si non fournies
         $adminEmail = $this->option('admin-email') ?: $this->ask('Admin email');
@@ -59,17 +57,17 @@ class CreateTenant extends Command
         }
         
         try {
-            // Créer le tenant
+            // Créer le tenant avec les valeurs par défaut du plan gratuit
             $tenant = Tenant::create([
                 'name' => $name,
                 'slug' => Str::slug($name),
                 'domain' => $domain,
-                'subscription_plan' => $plan,
-                'settings' => $this->getDefaultSettings($plan),
-                'features' => $this->getFeaturesByPlan($plan),
-                'max_storage_gb' => $this->getStorageByPlan($plan),
-                'max_users' => $this->getUsersByPlan($plan),
-                'max_file_size_mb' => $this->getFileSizeByPlan($plan),
+                'subscription_plan' => 'free',
+                'settings' => $this->getDefaultSettings(),
+                'features' => $this->getDefaultFeatures(),
+                'max_storage_gb' => 1,
+                'max_users' => 5,
+                'max_file_size_mb' => 25,
                 'is_active' => true,
             ]);
             
@@ -104,7 +102,7 @@ class CreateTenant extends Command
                     ['Tenant Name', $tenant->name],
                     ['Tenant Slug', $tenant->slug],
                     ['Domain', $tenant->domain ?: 'N/A'],
-                    ['Plan', $tenant->subscription_plan],
+                    ['Plan', 'Gratuit (toutes fonctionnalités)'],
                     ['Max Storage', $tenant->max_storage_gb . ' GB'],
                     ['Max Users', $tenant->max_users],
                     ['Max File Size', $tenant->max_file_size_mb . ' MB'],
@@ -130,9 +128,9 @@ class CreateTenant extends Command
     }
     
     /**
-     * Get default settings based on plan
+     * Get default settings
      */
-    private function getDefaultSettings(string $plan): array
+    private function getDefaultSettings(): array
     {
         return [
             'theme' => 'light',
@@ -140,11 +138,11 @@ class CreateTenant extends Command
             'timezone' => 'Europe/Paris',
             'date_format' => 'd/m/Y',
             'time_format' => 'H:i',
-            'allow_registration' => false,
+            'allow_registration' => true,
             'require_email_verification' => true,
-            'require_2fa' => $plan === 'enterprise',
-            'session_lifetime' => $plan === 'enterprise' ? 60 : 120,
-            'password_expires_days' => $plan === 'enterprise' ? 90 : null,
+            'require_2fa' => false,
+            'session_lifetime' => 120,
+            'password_expires_days' => null,
             'allowed_file_types' => [
                 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
                 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff',
@@ -154,92 +152,31 @@ class CreateTenant extends Command
     }
     
     /**
-     * Get features based on plan
+     * Get default features (toutes les fonctionnalités disponibles)
      */
-    private function getFeaturesByPlan(string $plan): array
+    private function getDefaultFeatures(): array
     {
-        return match($plan) {
-            'enterprise' => [
-                'unlimited_users',
-                'unlimited_storage',
-                'api_access',
-                'white_label',
-                'priority_support',
-                'advanced_security',
-                'custom_domain',
-                'sso',
-                'audit_logs',
-                'digital_signatures',
-                'ocr',
-                'redaction',
-                'collaboration',
-                'advanced_editor',
-                'batch_processing',
-                'webhooks',
-                'custom_integrations',
-                'dedicated_support',
-                'sla_guarantee'
-            ],
-            'professional' => [
-                'api_access',
-                'priority_support',
-                'custom_domain',
-                'audit_logs',
-                'digital_signatures',
-                'ocr',
-                'redaction',
-                'collaboration',
-                'advanced_editor',
-                'batch_processing',
-                'email_support'
-            ],
-            'basic' => [
-                'basic_editor',
-                'basic_conversions',
-                'basic_sharing',
-                'email_support',
-                'standard_security'
-            ],
-            default => ['basic_conversions']
-        };
-    }
-    
-    /**
-     * Get storage limit based on plan
-     */
-    private function getStorageByPlan(string $plan): int
-    {
-        return match($plan) {
-            'enterprise' => 1000, // 1TB
-            'professional' => 100, // 100GB
-            'basic' => 10, // 10GB
-            default => 5
-        };
-    }
-    
-    /**
-     * Get user limit based on plan
-     */
-    private function getUsersByPlan(string $plan): int
-    {
-        return match($plan) {
-            'enterprise' => 999999, // Unlimited
-            'professional' => 50,
-            'basic' => 5,
-            default => 3
-        };
-    }
-    
-    /**
-     * Get file size limit based on plan
-     */
-    private function getFileSizeByPlan(string $plan): int
-    {
-        return match($plan) {
-            'enterprise' => 500, // 500MB
-            'professional' => 200, // 200MB
-            'basic' => 100, // 100MB
-            default => 50
-        };
+        return [
+            'api_access',
+            'custom_domain',
+            'audit_logs',
+            'digital_signatures',
+            'ocr',
+            'redaction',
+            'collaboration',
+            'advanced_editor',
+            'batch_processing',
+            'basic_editor',
+            'basic_conversions',
+            'advanced_conversions',
+            'basic_sharing',
+            'advanced_sharing',
+            'email_support',
+            'webhooks',
+            'custom_integrations',
+            'advanced_security',
+            'sso',
+            'white_label'
+        ];
     }
 }

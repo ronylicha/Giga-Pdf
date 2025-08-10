@@ -133,7 +133,7 @@ class DocumentController extends Controller
         }
         
         return Inertia::render('Documents/Upload', [
-            'max_file_size' => $tenant->max_file_size_mb ?? 100,
+            'max_file_size' => $tenant->max_file_size_mb ?? 25,
             'allowed_types' => [
                 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
                 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff',

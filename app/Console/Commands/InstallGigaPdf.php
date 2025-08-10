@@ -491,16 +491,16 @@ class InstallGigaPdf extends Command
                     'default_locale' => 'fr',
                     'timezone' => 'Europe/Paris',
                 ],
-                'max_storage_gb' => 100,
-                'max_users' => 100,
-                'max_file_size_mb' => 100,
+                'max_storage_gb' => 1,
+                'max_users' => 5,
+                'max_file_size_mb' => 25,
                 'features' => [
                     'ocr' => true,
                     'advanced_editing' => true,
                     'api_access' => true,
                     'custom_branding' => true,
                 ],
-                'subscription_plan' => 'enterprise',
+                'subscription_plan' => 'free',
                 'subscription_expires_at' => now()->addYears(10),
             ]);
 

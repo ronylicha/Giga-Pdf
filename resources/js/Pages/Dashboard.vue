@@ -1,11 +1,11 @@
 <template>
-    <Head title="Dashboard" />
+    <Head title="Tableau de bord" />
     
     <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="text-xl font-semibold leading-tight text-gray-800">
-                    Dashboard
+                    Tableau de bord
                 </h2>
                 <div class="text-sm text-gray-500">
                     Tenant: {{ $page.props.auth.tenant?.name || 'N/A' }}
@@ -25,7 +25,7 @@
                                 </svg>
                             </div>
                             <div class="ml-5">
-                                <p class="text-gray-500 text-sm">Total Documents</p>
+                                <p class="text-gray-500 text-sm">Documents totaux</p>
                                 <p class="text-2xl font-semibold text-gray-900">{{ stats.documents_count }}</p>
                             </div>
                         </div>
@@ -53,7 +53,7 @@
                                 </svg>
                             </div>
                             <div class="ml-5">
-                                <p class="text-gray-500 text-sm">Documents Partagés</p>
+                                <p class="text-gray-500 text-sm">Documents partagés</p>
                                 <p class="text-2xl font-semibold text-gray-900">{{ stats.shares_count }}</p>
                             </div>
                         </div>
@@ -67,7 +67,7 @@
                                 </svg>
                             </div>
                             <div class="ml-5">
-                                <p class="text-gray-500 text-sm">Stockage Utilisé</p>
+                                <p class="text-gray-500 text-sm">Stockage utilisé</p>
                                 <p class="text-2xl font-semibold text-gray-900">{{ formatFileSize(storage.used) }}</p>
                             </div>
                         </div>
@@ -77,7 +77,7 @@
                 <!-- Quick Actions -->
                 <div class="bg-white rounded-lg shadow mb-8">
                     <div class="p-6">
-                        <h3 class="text-lg font-medium text-gray-900 mb-4">Actions Rapides</h3>
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Actions rapides</h3>
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <Link
                                 :href="route('documents.create')"
@@ -86,7 +86,7 @@
                                 <svg class="w-8 h-8 text-indigo-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                 </svg>
-                                <span class="text-sm font-medium text-gray-900">Upload PDF</span>
+                                <span class="text-sm font-medium text-gray-900">Télécharger PDF</span>
                             </Link>
                             
                             <Link
@@ -126,7 +126,7 @@
                 <div class="bg-white rounded-lg shadow">
                     <div class="p-6">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-medium text-gray-900">Documents Récents</h3>
+                            <h3 class="text-lg font-medium text-gray-900">Documents récents</h3>
                             <Link
                                 :href="route('documents.index')"
                                 class="text-sm text-indigo-600 hover:text-indigo-900"
@@ -210,7 +210,7 @@
                 <!-- Storage Usage -->
                 <div class="mt-8 bg-white rounded-lg shadow">
                     <div class="p-6">
-                        <h3 class="text-lg font-medium text-gray-900 mb-4">Utilisation du Stockage</h3>
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Utilisation du stockage</h3>
                         <div class="space-y-2">
                             <div class="flex justify-between text-sm">
                                 <span class="text-gray-600">Espace utilisé</span>

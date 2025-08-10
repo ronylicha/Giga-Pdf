@@ -2,7 +2,7 @@
     <AuthenticatedLayout>
         <template #header>
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                Dashboard Super Admin
+                Tableau de bord Super Admin
             </h2>
         </template>
 
@@ -42,7 +42,7 @@
                     </div>
 
                     <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
-                        <div class="text-sm font-medium text-gray-500">Tenants Suspendus</div>
+                        <div class="text-sm font-medium text-gray-500">Tenants suspendus</div>
                         <div class="mt-1 text-3xl font-semibold text-gray-900">
                             {{ stats.suspended_tenants }}
                         </div>

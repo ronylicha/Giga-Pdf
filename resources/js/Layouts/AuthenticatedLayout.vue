@@ -256,14 +256,14 @@ onMounted(() => {
                                             :class="{ 'opacity-50 cursor-not-allowed': $page.props.impersonation?.active }"
                                             :disabled="$page.props.impersonation?.active"
                                         >
-                                            Profile
+                                            Profil
                                         </DropdownLink>
                                         <DropdownLink
                                             :href="route('logout')"
                                             method="post"
                                             as="button"
                                         >
-                                            Log Out
+                                            Déconnexion
                                         </DropdownLink>
                                     </template>
                                 </Dropdown>
@@ -402,14 +402,14 @@ onMounted(() => {
 
                         <div class="mt-3 space-y-1">
                             <ResponsiveNavLink :href="route('profile.edit')">
-                                Profile
+                                Profil
                             </ResponsiveNavLink>
                             <ResponsiveNavLink
                                 :href="route('logout')"
                                 method="post"
                                 as="button"
                             >
-                                Log Out
+                                Déconnexion
                             </ResponsiveNavLink>
                         </div>
                     </div>

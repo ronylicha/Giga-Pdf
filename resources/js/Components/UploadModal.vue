@@ -2,7 +2,7 @@
     <Modal :show="show" @close="$emit('update:show', false)">
         <div class="p-6">
             <h2 class="text-lg font-medium text-gray-900 mb-4">
-                Upload Document
+                Télécharger un document
             </h2>
 
             <div
@@ -17,7 +17,7 @@
                     </svg>
                     <div class="flex text-sm text-gray-600">
                         <label for="file-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
-                            <span>Upload a file</span>
+                            <span>Télécharger un fichier</span>
                             <input
                                 id="file-upload"
                                 name="file-upload"
@@ -28,17 +28,17 @@
                                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.odt,.ods,.odp,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.svg,.webp,.html,.xml,.csv,.json,.md,.epub,.mobi"
                             >
                         </label>
-                        <p class="pl-1">or drag and drop</p>
+                        <p class="pl-1">ou glisser-déposer</p>
                     </div>
                     <p class="text-xs text-gray-500">
-                        PDF, DOC, XLS, PPT, Images up to {{ maxFileSize }}MB
+                        PDF, DOC, XLS, PPT, Images jusqu'à {{ maxFileSize }}MB
                     </p>
                 </div>
             </div>
 
             <!-- File List -->
             <div v-if="files.length > 0" class="mt-4">
-                <h3 class="text-sm font-medium text-gray-900 mb-2">Selected Files</h3>
+                <h3 class="text-sm font-medium text-gray-900 mb-2">Fichiers sélectionnés</h3>
                 <ul class="divide-y divide-gray-200">
                     <li v-for="(file, index) in files" :key="index" class="py-2 flex items-center justify-between">
                         <div class="flex items-center">
@@ -63,7 +63,7 @@
             <!-- Upload Progress -->
             <div v-if="uploading" class="mt-4">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-sm font-medium text-gray-700">Uploading...</span>
+                    <span class="text-sm font-medium text-gray-700">Téléchargement...</span>
                     <span class="text-sm text-gray-500">{{ uploadProgress }}%</span>
                 </div>
                 <div class="w-full bg-gray-200 rounded-full h-2">
@@ -77,14 +77,14 @@
                     @click="$emit('update:show', false)"
                     class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
-                    Cancel
+                    Annuler
                 </button>
                 <button
                     @click="uploadFiles"
                     :disabled="files.length === 0 || uploading"
                     class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    Upload
+                    Télécharger
                 </button>
             </div>
         </div>
@@ -125,8 +125,8 @@ const addFiles = (newFiles) => {
         if (file.size > maxSize) {
             window.notify({
                 type: 'error',
-                title: 'File too large',
-                message: `${file.name} exceeds the maximum file size of ${maxFileSize.value}MB`,
+                title: 'Fichier trop volumineux',
+                message: `${file.name} dépasse la taille maximale de fichier de ${maxFileSize.value}MB`,
             });
             return;
         }
@@ -158,8 +158,8 @@ const uploadFiles = async () => {
         onSuccess: () => {
             window.notify({
                 type: 'success',
-                title: 'Success',
-                message: 'Files uploaded successfully',
+                title: 'Succès',
+                message: 'Fichiers téléchargés avec succès',
             });
             files.value = [];
             emit('update:show', false);
@@ -167,8 +167,8 @@ const uploadFiles = async () => {
         onError: () => {
             window.notify({
                 type: 'error',
-                title: 'Upload Failed',
-                message: 'Failed to upload files. Please try again.',
+                title: 'Échec du téléchargement',
+                message: 'Échec du téléchargement des fichiers. Veuillez réessayer.',
             });
         },
         onFinish: () => {
@@ -181,7 +181,7 @@ const uploadFiles = async () => {
 const formatBytes = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['Octets', 'Ko', 'Mo', 'Go'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };

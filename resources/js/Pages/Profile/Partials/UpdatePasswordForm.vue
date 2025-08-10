@@ -101,7 +101,7 @@ const updatePassword = () => {
             </div>
 
             <div class="flex items-center gap-4">
-                <PrimaryButton :disabled="form.processing">Save</PrimaryButton>
+                <PrimaryButton :disabled="form.processing">Enregistrer</PrimaryButton>
 
                 <Transition
                     enter-active-class="transition ease-in-out"
@@ -113,7 +113,7 @@ const updatePassword = () => {
                         v-if="form.recentlySuccessful"
                         class="text-sm text-gray-600 dark:text-gray-400"
                     >
-                        Saved.
+                        Enregistré.
                     </p>
                 </Transition>
             </div>

@@ -1,15 +1,6 @@
 import '../css/app.css';
 import './bootstrap';
-// Laravel Echo + Reverb
-import Echo from 'laravel-echo'
-window.Echo = new Echo({
-  broadcaster: 'reverb',
-  key: import.meta.env.VITE_REVERB_APP_KEY,
-  wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
-  wsPort: Number(import.meta.env.VITE_REVERB_PORT || 8080),
-  forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'http') === 'https',
-  enabledTransports: ['ws', 'wss'],
-})
+// Laravel Echo + Reverb (initialisé dynamiquement après le montage)
 
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
@@ -26,10 +17,32 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.vue'),
         ),
     setup({ el, App, props, plugin }) {
-        return createApp({ render: () => h(App, props) })
+        const vueApp = createApp({ render: () => h(App, props) })
             .use(plugin)
             .use(ZiggyVue)
             .mount(el);
+
+        // Initialiser Echo sans bloquer l'app si le client n'est pas disponible
+        if (typeof window !== 'undefined' && import.meta.env.VITE_REVERB_APP_KEY) {
+            import('laravel-echo')
+                .then(({ default: Echo }) => {
+                    try {
+                        window.Echo = new Echo({
+                            broadcaster: 'reverb',
+                            key: import.meta.env.VITE_REVERB_APP_KEY,
+                            wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
+                            wsPort: Number(import.meta.env.VITE_REVERB_PORT || 8080),
+                            forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'http') === 'https',
+                            enabledTransports: ['ws', 'wss'],
+                        })
+                    } catch (e) {
+                        console.warn('Echo initialization failed:', e)
+                    }
+                })
+                .catch((e) => console.warn('Echo client not available:', e))
+        }
+
+        return vueApp;
     },
     progress: {
         color: '#4B5563',

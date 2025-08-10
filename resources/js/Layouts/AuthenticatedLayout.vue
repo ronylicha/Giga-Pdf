@@ -58,7 +58,7 @@ onMounted(() => {
                                 <!-- Documents Menu (not for super admin) -->
                                 <Dropdown v-if="$page.props.auth.user?.role !== 'super-admin'" align="left" width="48">
                                     <template #trigger>
-                                        <span class="inline-flex">
+                                        <span class="inline-flex rounded-md">
                                             <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
                                                 Documents
                                                 <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -86,7 +86,7 @@ onMounted(() => {
                                 <!-- Outils PDF Menu (not for super admin) -->
                                 <Dropdown v-if="$page.props.auth.user?.role !== 'super-admin'" align="left" width="48">
                                     <template #trigger>
-                                        <span class="inline-flex">
+                                        <span class="inline-flex rounded-md">
                                             <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
                                                 Outils PDF
                                                 <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -134,7 +134,7 @@ onMounted(() => {
                                 <!-- Super Admin Menu -->
                                 <Dropdown v-if="$page.props.auth.user?.role === 'super-admin'" align="left" width="48">
                                     <template #trigger>
-                                        <span class="inline-flex">
+                                        <span class="inline-flex rounded-md">
                                             <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
                                                 Super Admin
                                                 <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -174,7 +174,7 @@ onMounted(() => {
                                 <!-- Tenant Admin Menu -->
                                 <Dropdown v-if="$page.props.auth.user?.role === 'tenant-admin'" align="left" width="48">
                                     <template #trigger>
-                                        <span class="inline-flex">
+                                        <span class="inline-flex rounded-md">
                                             <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
                                                 Administration
                                                 <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -224,13 +224,7 @@ onMounted(() => {
                                                     <span v-if="$page.props.impersonation?.active" class="mr-2">
                                                         ⚠️
                                                     </span>
-                                                    {{ $page.props.auth.user.name }}
-                                                    <span v-if="$page.props.auth.user.roles && $page.props.auth.user.roles.length > 0" class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full dark:bg-blue-800 dark:text-blue-200">
-                                                        {{ $page.props.auth.user.roles.join(', ') }}
-                                                    </span>
-                                                    <span v-else-if="$page.props.auth.user.role" class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full dark:bg-blue-800 dark:text-blue-200">
-                                                        {{ $page.props.auth.user.role }}
-                                                    </span>
+                                                    <span>{{ $page.props.auth.user.name }}</span>
                                                 </div>
 
                                                 <svg

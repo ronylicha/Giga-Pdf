@@ -83,11 +83,14 @@ class TenantPermissionService
         app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($tenant->id);
         
         // Tenant Admin - manages their tenant
-        $tenantAdmin = Role::create([
-            'name' => 'tenant-admin',
-            'guard_name' => 'web',
-            'tenant_id' => $tenant->id
-        ]);
+        $tenantAdmin = Role::firstOrCreate(
+            [
+                'name' => 'tenant-admin',
+                'guard_name' => 'web',
+                'tenant_id' => $tenant->id
+            ],
+            []
+        );
         
         $tenantAdmin->givePermissionTo([
             'view documents',
@@ -110,11 +113,14 @@ class TenantPermissionService
         ]);
 
         // Manager - manages documents and users
-        $manager = Role::create([
-            'name' => 'manager',
-            'guard_name' => 'web',
-            'tenant_id' => $tenant->id
-        ]);
+        $manager = Role::firstOrCreate(
+            [
+                'name' => 'manager',
+                'guard_name' => 'web',
+                'tenant_id' => $tenant->id
+            ],
+            []
+        );
         
         $manager->givePermissionTo([
             'view documents',
@@ -129,11 +135,14 @@ class TenantPermissionService
         ]);
 
         // Editor - can work with documents
-        $editor = Role::create([
-            'name' => 'editor',
-            'guard_name' => 'web',
-            'tenant_id' => $tenant->id
-        ]);
+        $editor = Role::firstOrCreate(
+            [
+                'name' => 'editor',
+                'guard_name' => 'web',
+                'tenant_id' => $tenant->id
+            ],
+            []
+        );
         
         $editor->givePermissionTo([
             'view documents',
@@ -144,11 +153,14 @@ class TenantPermissionService
         ]);
 
         // Viewer - read-only access
-        $viewer = Role::create([
-            'name' => 'viewer',
-            'guard_name' => 'web',
-            'tenant_id' => $tenant->id
-        ]);
+        $viewer = Role::firstOrCreate(
+            [
+                'name' => 'viewer',
+                'guard_name' => 'web',
+                'tenant_id' => $tenant->id
+            ],
+            []
+        );
         
         $viewer->givePermissionTo([
             'view documents',

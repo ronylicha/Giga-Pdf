@@ -427,6 +427,51 @@ class InstallGigaPdf extends Command
         $tenantSlug = Str::slug($tenantName);
         $tenantDomain = $this->ask('Tenant domain (optional)', 'giga-pdf.local');
 
+        // First create the super admin (without transaction since tenant_id is null)
+        $this->info('  Creating Super Admin...');
+        
+        // Check if super admin already exists
+        $existingAdmin = User::where('email', $adminEmail)->first();
+        if (!$existingAdmin) {
+            // Create roles and permissions first
+            $this->createRolesAndPermissions();
+            
+            // Create the super admin
+            $superAdmin = User::create([
+                'name' => $adminName,
+                'email' => $adminEmail,
+                'password' => Hash::make($adminPassword),
+                'tenant_id' => null, // Super admin doesn't belong to any tenant
+                'is_active' => true,
+                'email_verified_at' => now(),
+            ]);
+            
+            // Don't set team context for super-admin
+            app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
+            
+            // Check if super-admin role exists, create if not
+            $superAdminRole = \Spatie\Permission\Models\Role::where('name', 'super-admin')
+                ->whereNull('team_id')
+                ->first();
+                
+            if (!$superAdminRole) {
+                $superAdminRole = \Spatie\Permission\Models\Role::create([
+                    'name' => 'super-admin',
+                    'guard_name' => 'web',
+                    'team_id' => null
+                ]);
+            }
+            
+            // Assign super-admin role
+            $superAdmin->assignRole('super-admin');
+            
+            $this->info('  ✓ Super Admin created successfully');
+        } else {
+            $this->warn('  Super admin with this email already exists.');
+            $superAdmin = $existingAdmin;
+        }
+        
+        // Now create the tenant in a transaction
         DB::beginTransaction();
         
         try {
@@ -456,16 +501,6 @@ class InstallGigaPdf extends Command
 
             $this->info('  ✓ Tenant created: ' . $tenantName);
 
-            // Create roles and permissions first
-            $this->createRolesAndPermissions();
-
-            // Use the make:super-admin command to create super admin properly
-            $this->call('make:super-admin', [
-                'email' => $adminEmail,
-                '--name' => $adminName,
-                '--password' => $adminPassword
-            ]);
-
             DB::commit();
             
             $this->info('');
@@ -490,8 +525,74 @@ class InstallGigaPdf extends Command
      */
     protected function createRolesAndPermissions(): void
     {
-        // This would normally use Spatie Permission package
-        // For now, we're using the role field in users table
+        $this->info('  Creating roles and permissions...');
+        
+        // Create roles
+        $roles = [
+            'super-admin' => 'Super Administrator with full system access',
+            'tenant-admin' => 'Tenant Administrator',
+            'manager' => 'Manager with user management capabilities',
+            'editor' => 'Editor with document editing capabilities', 
+            'viewer' => 'Viewer with read-only access'
+        ];
+        
+        foreach ($roles as $roleName => $description) {
+            // Only create global roles (without tenant_id)
+            if ($roleName === 'super-admin') {
+                $role = \Spatie\Permission\Models\Role::firstOrCreate(
+                    ['name' => $roleName, 'guard_name' => 'web', 'team_id' => null],
+                    []
+                );
+            }
+            // Skip tenant-specific roles here as they will be created per tenant
+        }
+        
+        // Create permissions
+        $permissions = [
+            // User management
+            'users.view',
+            'users.create', 
+            'users.edit',
+            'users.delete',
+            
+            // Document management
+            'documents.view',
+            'documents.create',
+            'documents.edit', 
+            'documents.delete',
+            'documents.share',
+            
+            // Conversion
+            'conversions.create',
+            'conversions.view',
+            
+            // Tenant management
+            'tenant.manage',
+            'tenant.settings',
+            
+            // System management
+            'system.manage',
+            'system.logs',
+            'system.backup',
+        ];
+        
+        foreach ($permissions as $permissionName) {
+            \Spatie\Permission\Models\Permission::firstOrCreate(
+                ['name' => $permissionName, 'guard_name' => 'web']
+            );
+        }
+        
+        // Assign permissions to super admin role only
+        $superAdminRole = \Spatie\Permission\Models\Role::where('name', 'super-admin')
+            ->whereNull('team_id')
+            ->first();
+        
+        if ($superAdminRole) {
+            $superAdminRole->syncPermissions(\Spatie\Permission\Models\Permission::all());
+        }
+        
+        // Tenant-specific roles will get their permissions when created per tenant
+        
         $this->info('  ✓ Roles and permissions configured');
     }
 

@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Models\User;
+use Illuminate\Console\Command;
 
 class ListUsersWithRoles extends Command
 {
@@ -27,18 +27,19 @@ class ListUsersWithRoles extends Command
     public function handle()
     {
         $users = User::with(['roles', 'tenant'])->get();
-        
+
         if ($users->isEmpty()) {
             $this->error('No users found in the database.');
+
             return 1;
         }
-        
+
         $this->info('Users and their roles:');
         $this->info('======================');
-        
+
         $tableData = $users->map(function ($user) {
             $roles = $user->roles->pluck('name')->toArray();
-            
+
             return [
                 'ID' => $user->id,
                 'Name' => $user->name,
@@ -48,25 +49,25 @@ class ListUsersWithRoles extends Command
                 'Verified' => $user->email_verified_at ? '✓' : '✗',
             ];
         });
-        
+
         $this->table(
             ['ID', 'Name', 'Email', 'Tenant', 'Roles', 'Verified'],
             $tableData
         );
-        
+
         // Statistics
         $this->info("\nStatistics:");
         $this->info("Total users: " . $users->count());
-        $this->info("Super admins: " . $users->filter(function($u) { 
-            return $u->hasRole('super-admin'); 
+        $this->info("Super admins: " . $users->filter(function ($u) {
+            return $u->hasRole('super-admin');
         })->count());
-        $this->info("Tenant admins: " . $users->filter(function($u) { 
-            return $u->hasRole('tenant-admin'); 
+        $this->info("Tenant admins: " . $users->filter(function ($u) {
+            return $u->hasRole('tenant-admin');
         })->count());
-        $this->info("Users with no roles: " . $users->filter(function($u) { 
-            return $u->roles->isEmpty(); 
+        $this->info("Users with no roles: " . $users->filter(function ($u) {
+            return $u->roles->isEmpty();
         })->count());
-        
+
         return 0;
     }
 }

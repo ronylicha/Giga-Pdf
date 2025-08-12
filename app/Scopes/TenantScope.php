@@ -19,7 +19,7 @@ class TenantScope implements Scope
             $builder->where($model->getTable() . '.tenant_id', Auth::user()->tenant_id);
         }
     }
-    
+
     /**
      * Extend the query builder with the needed functions.
      */
@@ -28,7 +28,7 @@ class TenantScope implements Scope
         $builder->macro('withoutTenantScope', function (Builder $builder) {
             return $builder->withoutGlobalScope($this);
         });
-        
+
         $builder->macro('allTenants', function (Builder $builder) {
             return $builder->withoutGlobalScope($this);
         });

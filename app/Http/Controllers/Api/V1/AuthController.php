@@ -3,10 +3,9 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
@@ -90,7 +89,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid credentials',
@@ -139,7 +138,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid credentials',
@@ -150,7 +149,7 @@ class AuthController extends Controller
         $google2fa = app('pragmarx.google2fa');
         $valid = $google2fa->verifyKey($user->two_factor_secret, $request->code);
 
-        if (!$valid) {
+        if (! $valid) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid 2FA code',
@@ -255,7 +254,7 @@ class AuthController extends Controller
 
         $user = $request->user();
 
-        if (!Hash::check($request->current_password, $user->password)) {
+        if (! Hash::check($request->current_password, $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Current password is incorrect',
@@ -332,14 +331,14 @@ class AuthController extends Controller
 
         $user = $request->user();
 
-        if (!$user->two_factor_secret) {
+        if (! $user->two_factor_secret) {
             return response()->json([
                 'success' => false,
                 'message' => '2FA is not enabled',
             ], 400);
         }
 
-        if (!Hash::check($request->password, $user->password)) {
+        if (! Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid password',
@@ -350,7 +349,7 @@ class AuthController extends Controller
         $google2fa = app('pragmarx.google2fa');
         $valid = $google2fa->verifyKey($user->two_factor_secret, $request->code);
 
-        if (!$valid) {
+        if (! $valid) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid 2FA code',

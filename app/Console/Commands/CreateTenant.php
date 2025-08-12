@@ -35,39 +35,41 @@ class CreateTenant extends Command
     public function handle()
     {
         $this->info('Creating new tenant...');
-        
+
         // Récupérer les paramètres
         $name = $this->argument('name');
         $domain = $this->option('domain');
-        
+
         // Demander les informations de l'admin si non fournies
         $adminEmail = $this->option('admin-email') ?: $this->ask('Admin email');
         $adminPassword = $this->option('admin-password') ?: $this->secret('Admin password (min 8 characters)');
-        
+
         // Valider le mot de passe
         if (strlen($adminPassword) < 8) {
             $this->error('Password must be at least 8 characters long.');
+
             return 1;
         }
-        
+
         // Vérifier si l'email existe déjà
         if (User::where('email', $adminEmail)->exists()) {
             $this->error("User with email {$adminEmail} already exists.");
+
             return 1;
         }
-        
+
         try {
             // Générer un slug unique pour le tenant
             $baseSlug = Str::slug($name);
             $slug = $baseSlug;
             $counter = 1;
-            
+
             // Vérifier l'unicité du slug
             while (Tenant::where('slug', $slug)->exists()) {
                 $slug = $baseSlug . '-' . $counter;
                 $counter++;
             }
-            
+
             // Créer le tenant avec les valeurs par défaut du plan gratuit
             $tenant = Tenant::create([
                 'name' => $name,
@@ -81,14 +83,14 @@ class CreateTenant extends Command
                 'max_file_size_mb' => 25,
                 'is_active' => true,
             ]);
-            
+
             $this->info("✓ Tenant '{$name}' created successfully with ID: {$tenant->id}");
-            
+
             // Créer les rôles et permissions pour ce tenant
             $permissionService = new TenantPermissionService();
             $permissionService->createTenantRolesAndPermissions($tenant);
             $this->info("✓ Roles and permissions created for tenant");
-            
+
             // Créer l'utilisateur admin
             $adminUser = User::create([
                 'name' => 'Admin',
@@ -98,12 +100,12 @@ class CreateTenant extends Command
                 'is_active' => true,
                 'email_verified_at' => now(),
             ]);
-            
+
             // Assigner le rôle tenant-admin à l'utilisateur
             $permissionService->assignRoleToUser($adminUser, 'tenant-admin', $tenant->id);
-            
+
             $this->info("✓ Admin user created: {$adminEmail}");
-            
+
             // Afficher le résumé
             $this->newLine();
             $this->table(
@@ -120,24 +122,24 @@ class CreateTenant extends Command
                     ['Admin Email', $adminUser->email],
                 ]
             );
-            
+
             $this->newLine();
             $this->info('Tenant created successfully! The admin user can now login.');
-            
+
             return 0;
-            
+
         } catch (\Exception $e) {
             $this->error('Failed to create tenant: ' . $e->getMessage());
-            
+
             // Nettoyer en cas d'erreur
             if (isset($tenant)) {
                 $tenant->delete();
             }
-            
+
             return 1;
         }
     }
-    
+
     /**
      * Get default settings
      */
@@ -157,11 +159,11 @@ class CreateTenant extends Command
             'allowed_file_types' => [
                 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
                 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff',
-                'txt', 'rtf', 'odt', 'ods', 'odp'
+                'txt', 'rtf', 'odt', 'ods', 'odp',
             ],
         ];
     }
-    
+
     /**
      * Get default features (toutes les fonctionnalités disponibles)
      */
@@ -187,7 +189,7 @@ class CreateTenant extends Command
             'custom_integrations',
             'advanced_security',
             'sso',
-            'white_label'
+            'white_label',
         ];
     }
 }

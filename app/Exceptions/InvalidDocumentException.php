@@ -8,7 +8,7 @@ class InvalidDocumentException extends Exception
 {
     protected $documentId;
     protected $validationErrors;
-    
+
     /**
      * Create a new exception instance.
      */
@@ -16,25 +16,27 @@ class InvalidDocumentException extends Exception
     {
         parent::__construct($message, $code, $previous);
     }
-    
+
     /**
      * Set document ID
      */
     public function setDocumentId(int $documentId): self
     {
         $this->documentId = $documentId;
+
         return $this;
     }
-    
+
     /**
      * Set validation errors
      */
     public function setValidationErrors(array $errors): self
     {
         $this->validationErrors = $errors;
+
         return $this;
     }
-    
+
     /**
      * Get document ID
      */
@@ -42,7 +44,7 @@ class InvalidDocumentException extends Exception
     {
         return $this->documentId;
     }
-    
+
     /**
      * Get validation errors
      */
@@ -50,7 +52,7 @@ class InvalidDocumentException extends Exception
     {
         return $this->validationErrors;
     }
-    
+
     /**
      * Report the exception.
      */
@@ -64,7 +66,7 @@ class InvalidDocumentException extends Exception
             'tenant_id' => auth()->user()?->tenant_id,
         ]);
     }
-    
+
     /**
      * Render the exception as an HTTP response.
      */
@@ -78,7 +80,7 @@ class InvalidDocumentException extends Exception
                 'validation_errors' => $this->validationErrors,
             ], 422);
         }
-        
+
         return redirect()->back()
             ->with('error', 'Invalid document: ' . $this->getMessage())
             ->withErrors($this->validationErrors ?? [])

@@ -1,21 +1,20 @@
 <?php
 
-use App\Http\Controllers\Auth\TwoFactorController;
-use App\Http\Controllers\DocumentController;
-use App\Http\Controllers\ConversionController;
-use App\Http\Controllers\PDFToolsController;
-use App\Http\Controllers\PDFAdvancedController;
 use App\Http\Controllers\Admin\AdminDashboardController;
-use App\Http\Controllers\TenantController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
-use App\Http\Controllers\Tenant\UserController as TenantUserController;
-use App\Http\Controllers\SuperAdmin\TenantManagementController;
-use App\Http\Controllers\SuperAdmin\UserManagementController;
-use App\Http\Controllers\InvitationController;
+use App\Http\Controllers\Auth\TwoFactorController;
+use App\Http\Controllers\ConversionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\InvitationController;
+use App\Http\Controllers\PDFAdvancedController;
+use App\Http\Controllers\PDFToolsController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\ShareController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ShareController;
+use App\Http\Controllers\SuperAdmin\TenantManagementController;
+use App\Http\Controllers\Tenant\UserController as TenantUserController;
+use App\Http\Controllers\TenantController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -48,7 +47,7 @@ Route::prefix('two-factor')->group(function () {
 
 // Authenticated routes
 Route::middleware(['auth', 'verified'])->group(function () {
-    
+
     // 2FA routes (only for authenticated user managing their 2FA)
     Route::prefix('two-factor')->group(function () {
         // Setup (optional, from profile)
@@ -63,21 +62,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/profile/security', function () {
         return Inertia::render('Profile/Security');
     })->name('profile.security');
-    
+
     // Profile routes (from Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-    
+
     // Impersonation stop route (must be outside super-admin group)
     Route::post('/stop-impersonation', [\App\Http\Controllers\SuperAdmin\SuperAdminUsersController::class, 'stopImpersonation'])->name('stop-impersonation');
-    
+
     // Routes requiring 2FA (if enabled)
     Route::middleware(['2fa'])->group(function () {
-        
+
         // Dashboard
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-        
+
         // Documents (requires tenant)
         Route::middleware(['require.tenant'])->prefix('documents')->name('documents.')->group(function () {
             Route::get('/', [DocumentController::class, 'index'])->name('index');
@@ -97,18 +96,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{document}/apply-modification', [DocumentController::class, 'applyModification'])->name('apply-modification');
             Route::post('/{document}/save-modifications', [DocumentController::class, 'saveModifications'])->name('save-modifications');
             Route::post('/{document}/share', [DocumentController::class, 'share'])->name('share');
-            
+
             // Bulk operations
             Route::post('/bulk-delete', [DocumentController::class, 'bulkDelete'])->name('bulk-delete');
             Route::post('/bulk-download', [DocumentController::class, 'bulkDownload'])->name('bulk-download');
-            
+
             // HTML Editor routes
             Route::get('/{document}/html-editor', [DocumentController::class, 'htmlEditor'])->name('html-editor');
             Route::post('/{document}/convert-to-html', [DocumentController::class, 'convertToHtml'])->name('convert-to-html');
             Route::post('/{document}/save-html', [DocumentController::class, 'saveHtml'])->name('save-html');
             Route::post('/{document}/save-html-as-pdf', [DocumentController::class, 'saveHtmlAsPdf'])->name('save-html-as-pdf');
             Route::get('/{document}/assets/{filename}', [DocumentController::class, 'serveAsset'])->name('serve-asset')->where('filename', '.*');
-            
+
             // PDF specific operations
             Route::post('/merge', [DocumentController::class, 'merge'])->name('merge');
             Route::post('/{document}/split', [DocumentController::class, 'split'])->name('split');
@@ -120,7 +119,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{document}/encrypt', [DocumentController::class, 'encrypt'])->name('encrypt');
             Route::post('/{document}/decrypt', [DocumentController::class, 'decrypt'])->name('decrypt');
         });
-        
+
         // Conversions (requires tenant)
         Route::middleware(['require.tenant'])->prefix('conversions')->name('conversions.')->group(function () {
             Route::get('/', [ConversionController::class, 'index'])->name('index');
@@ -129,7 +128,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::delete('/{conversion}', [ConversionController::class, 'destroy'])->name('destroy');
             Route::post('/{conversion}/retry', [ConversionController::class, 'retry'])->name('retry');
         });
-        
+
         // PDF Tools (requires tenant)
         Route::middleware(['require.tenant'])->prefix('tools')->name('tools.')->group(function () {
             Route::get('/merge', [PDFToolsController::class, 'merge'])->name('merge');
@@ -142,42 +141,42 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/ocr', [PDFToolsController::class, 'ocr'])->name('ocr');
             Route::get('/extract', [PDFToolsController::class, 'extract'])->name('extract');
         });
-        
+
         // PDF Advanced Features (requires tenant)
         Route::middleware(['require.tenant'])->prefix('pdf-advanced')->name('pdf-advanced.')->group(function () {
             Route::get('/', [PDFAdvancedController::class, 'index'])->name('index');
-            
+
             // Pages principales pour chaque outil
             Route::get('/signatures', [PDFAdvancedController::class, 'signaturesPage'])->name('signatures');
             Route::get('/redact', [PDFAdvancedController::class, 'redactPage'])->name('redact');
             Route::get('/standards', [PDFAdvancedController::class, 'standardsPage'])->name('standards');
             Route::get('/compare', [PDFAdvancedController::class, 'comparePage'])->name('compare');
             Route::get('/forms', [PDFAdvancedController::class, 'formsPage'])->name('forms');
-            
+
             // Digital Signatures
             Route::post('/documents/{document}/sign', [PDFAdvancedController::class, 'signDocument'])->name('sign');
             Route::get('/documents/{document}/verify-signature', [PDFAdvancedController::class, 'verifySignature'])->name('verify-signature');
             Route::post('/certificate/create', [PDFAdvancedController::class, 'createSelfSignedCertificate'])->name('certificate.create');
-            
+
             // Redaction
             Route::post('/documents/{document}/redact', [PDFAdvancedController::class, 'redactDocument'])->name('redact-action');
             Route::post('/documents/{document}/redact-sensitive', [PDFAdvancedController::class, 'redactSensitiveData'])->name('redact-sensitive');
             Route::post('/documents/{document}/redact-keywords', [PDFAdvancedController::class, 'redactByKeywords'])->name('redact-keywords');
-            
+
             // PDF Standards
             Route::post('/documents/{document}/convert-pdfa', [PDFAdvancedController::class, 'convertToPDFA'])->name('convert-pdfa');
             Route::post('/documents/{document}/convert-pdfx', [PDFAdvancedController::class, 'convertToPDFX'])->name('convert-pdfx');
-            
+
             // Comparison
             Route::post('/compare', [PDFAdvancedController::class, 'compareDocuments'])->name('compare-action');
             Route::post('/compare-text', [PDFAdvancedController::class, 'compareText'])->name('compare-text');
-            
+
             // Forms
             Route::post('/documents/{document}/create-form', [PDFAdvancedController::class, 'createForm'])->name('create-form');
             Route::post('/documents/{document}/fill-form', [PDFAdvancedController::class, 'fillForm'])->name('fill-form');
             Route::get('/documents/{document}/extract-form-data', [PDFAdvancedController::class, 'extractFormData'])->name('extract-form-data');
         });
-        
+
         // Share management routes (requires tenant)
         Route::middleware(['require.tenant'])->prefix('shares')->name('shares.')->group(function () {
             Route::get('/', [ShareController::class, 'index'])->name('index');
@@ -187,7 +186,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/{share}/stats', [ShareController::class, 'stats'])->name('stats');
             Route::post('/{share}/extend', [ShareController::class, 'extend'])->name('extend');
         });
-        
+
         // Tenant admin routes
         Route::middleware(['role:tenant-admin'])->prefix('tenant')->name('tenant.')->group(function () {
             // User management within tenant
@@ -200,28 +199,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::delete('/users/{user}', [TenantUserController::class, 'destroy'])->name('users.destroy');
             Route::post('/users/{user}/reset-password', [TenantUserController::class, 'resetPassword'])->name('users.reset-password');
             Route::post('/users/{user}/toggle-2fa', [TenantUserController::class, 'toggle2FA'])->name('users.toggle-2fa');
-            
+
             // Invitations
             Route::post('/invitations/{invitation}/resend', [TenantUserController::class, 'resendInvitation'])->name('invitations.resend');
             Route::delete('/invitations/{invitation}', [TenantUserController::class, 'cancelInvitation'])->name('invitations.cancel');
-            
+
             // Settings
             Route::get('/settings', [AdminDashboardController::class, 'settings'])->name('settings');
             Route::post('/settings', [AdminDashboardController::class, 'updateSettings'])->name('settings.update');
-            
+
             // Activity logs
             Route::get('/activity', [AdminDashboardController::class, 'activity'])->name('activity');
-            
+
             // Storage management
             Route::get('/storage', [AdminDashboardController::class, 'storage'])->name('storage');
             Route::post('/storage/cleanup', [AdminDashboardController::class, 'cleanupStorage'])->name('storage.cleanup');
-            
+
             // Roles management
             Route::resource('roles', RoleController::class);
             Route::get('/roles/{role}/users', [RoleController::class, 'users'])->name('roles.users');
             Route::post('/roles/{role}/assign-users', [RoleController::class, 'assignUsers'])->name('roles.assign-users');
             Route::delete('/roles/{role}/users/{user}', [RoleController::class, 'removeUser'])->name('roles.remove-user');
-            
+
             // Admin sub-routes
             Route::prefix('admin')->name('admin.')->group(function () {
                 Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
@@ -232,27 +231,27 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 Route::get('/settings', [AdminDashboardController::class, 'settings'])->name('settings');
             });
         });
-        
+
         // Admin routes (keeping for backwards compatibility)
         Route::middleware(['role:admin,tenant-admin'])->prefix('admin')->name('admin.')->group(function () {
             Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
-            
+
             // User management
             Route::resource('users', AdminUserController::class);
             Route::post('/users/{user}/reset-password', [AdminUserController::class, 'resetPassword'])->name('users.reset-password');
             Route::post('/users/{user}/toggle-2fa', [AdminUserController::class, 'toggle2FA'])->name('users.toggle-2fa');
-            
+
             // Settings
             Route::get('/settings', [AdminDashboardController::class, 'settings'])->name('settings');
             Route::post('/settings', [AdminDashboardController::class, 'updateSettings'])->name('settings.update');
-            
+
             // Activity logs
             Route::get('/activity', [AdminDashboardController::class, 'activity'])->name('activity');
-            
+
             // Storage management
             Route::get('/storage', [AdminDashboardController::class, 'storage'])->name('storage');
             Route::post('/storage/cleanup', [AdminDashboardController::class, 'cleanupStorage'])->name('storage.cleanup');
-            
+
             // Certificates management
             Route::prefix('certificates')->name('certificates.')->group(function () {
                 Route::get('/', [App\Http\Controllers\Admin\CertificateController::class, 'index'])->name('index');
@@ -262,7 +261,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 Route::delete('/{certificate}', [App\Http\Controllers\Admin\CertificateController::class, 'destroy'])->name('destroy');
             });
         });
-        
+
         // Tenant management routes (only for super-admin)
         Route::middleware(['super.admin'])->prefix('tenants')->name('tenants.')->group(function () {
             Route::get('/', [TenantController::class, 'index'])->name('index');
@@ -274,11 +273,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::delete('/{tenant}', [TenantController::class, 'destroy'])->name('destroy');
             Route::post('/{tenant}/toggle-status', [TenantController::class, 'toggleStatus'])->name('toggle-status');
         });
-        
+
         // Super admin routes
         Route::middleware(['role:super-admin'])->prefix('super-admin')->name('super-admin.')->group(function () {
             Route::get('/dashboard', [TenantController::class, 'dashboard'])->name('dashboard');
-            
+
             // Tenant management
             Route::get('/tenants', [TenantManagementController::class, 'index'])->name('tenants.index');
             Route::get('/tenants/create', [TenantManagementController::class, 'create'])->name('tenants.create');
@@ -292,7 +291,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/tenants/{tenant}/export', [TenantManagementController::class, 'export'])->name('tenants.export');
             Route::get('/tenants/{tenant}/edit-limits', [TenantManagementController::class, 'editLimits'])->name('tenants.edit-limits');
             Route::patch('/tenants/{tenant}/update-limits', [TenantManagementController::class, 'updateLimits'])->name('tenants.update-limits');
-            
+
             // User management
             Route::get('/users', [\App\Http\Controllers\SuperAdmin\SuperAdminUsersController::class, 'index'])->name('users.index');
             Route::get('/users/create', [\App\Http\Controllers\SuperAdmin\SuperAdminUsersController::class, 'create'])->name('users.create');
@@ -305,7 +304,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/users/{user}/verify-email', [\App\Http\Controllers\SuperAdmin\SuperAdminUsersController::class, 'verifyEmail'])->name('users.verify-email');
             Route::post('/users/{user}/disable-2fa', [\App\Http\Controllers\SuperAdmin\SuperAdminUsersController::class, 'disable2FA'])->name('users.disable-2fa');
             Route::post('/users/{user}/impersonate', [\App\Http\Controllers\SuperAdmin\SuperAdminUsersController::class, 'impersonate'])->name('users.impersonate');
-            
+
             // System management
             Route::get('/system', [TenantController::class, 'system'])->name('system');
             Route::get('/horizon', function () {

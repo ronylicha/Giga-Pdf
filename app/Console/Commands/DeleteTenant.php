@@ -2,13 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Models\ActivityLog;
+use App\Models\Conversion;
+use App\Models\Document;
+use App\Models\Invitation;
+use App\Models\Share;
 use App\Models\Tenant;
 use App\Models\User;
-use App\Models\Document;
-use App\Models\Conversion;
-use App\Models\Share;
-use App\Models\ActivityLog;
-use App\Models\Invitation;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -38,14 +38,15 @@ class DeleteTenant extends Command
     public function handle()
     {
         $identifier = $this->argument('id');
-        
+
         // Find tenant by ID or slug
         $tenant = Tenant::where('id', $identifier)
             ->orWhere('slug', $identifier)
             ->first();
-        
-        if (!$tenant) {
+
+        if (! $tenant) {
             $this->error("Tenant with ID or slug '{$identifier}' not found.");
+
             return Command::FAILURE;
         }
 
@@ -66,26 +67,28 @@ class DeleteTenant extends Command
         );
 
         // Confirm deletion
-        if (!$this->option('force')) {
+        if (! $this->option('force')) {
             $this->warn('⚠️  WARNING: This action cannot be undone!');
             $this->warn('The following will be permanently deleted:');
             $this->line('  - All users and their data');
             $this->line('  - All documents and conversions');
             $this->line('  - All shares and invitations');
             $this->line('  - All activity logs');
-            if (!$this->option('keep-files')) {
+            if (! $this->option('keep-files')) {
                 $this->line('  - All storage files');
             }
-            
-            if (!$this->confirm('Are you sure you want to delete this tenant?')) {
+
+            if (! $this->confirm('Are you sure you want to delete this tenant?')) {
                 $this->info('Deletion cancelled.');
+
                 return Command::SUCCESS;
             }
-            
+
             // Double confirmation for safety
             $confirmName = $this->ask("Please type the tenant name '{$tenant->name}' to confirm");
             if ($confirmName !== $tenant->name) {
                 $this->error('Tenant name does not match. Deletion cancelled.');
+
                 return Command::FAILURE;
             }
         }
@@ -113,32 +116,32 @@ class DeleteTenant extends Command
             $bar->setMessage('Deleting documents...');
             $documents = Document::where('tenant_id', $tenant->id)->get();
             $documentCount = $documents->count();
-            
+
             // Delete storage files if not keeping
-            if (!$this->option('keep-files')) {
+            if (! $this->option('keep-files')) {
                 foreach ($documents as $document) {
                     if (Storage::exists($document->stored_name)) {
                         Storage::delete($document->stored_name);
                     }
                 }
-                
+
                 // Delete tenant directories
                 $tenantStoragePath = 'documents/' . $tenant->id;
                 if (Storage::exists($tenantStoragePath)) {
                     Storage::deleteDirectory($tenantStoragePath);
                 }
-                
+
                 $tenantConversionPath = 'conversions/' . $tenant->id;
                 if (Storage::exists($tenantConversionPath)) {
                     Storage::deleteDirectory($tenantConversionPath);
                 }
-                
+
                 $tenantThumbnailPath = 'thumbnails/' . $tenant->id;
                 if (Storage::exists($tenantThumbnailPath)) {
                     Storage::deleteDirectory($tenantThumbnailPath);
                 }
             }
-            
+
             Document::where('tenant_id', $tenant->id)->delete();
             $bar->advance();
 
@@ -155,14 +158,14 @@ class DeleteTenant extends Command
             // 6. Delete users
             $bar->setMessage('Deleting users...');
             $userCount = User::where('tenant_id', $tenant->id)->count();
-            
+
             // Remove user roles and permissions
             $users = User::where('tenant_id', $tenant->id)->get();
             foreach ($users as $user) {
                 $user->roles()->detach();
                 $user->permissions()->detach();
             }
-            
+
             User::where('tenant_id', $tenant->id)->delete();
             $bar->advance();
 
@@ -178,10 +181,10 @@ class DeleteTenant extends Command
             $bar->advance();
 
             DB::commit();
-            
+
             $bar->finish();
             $this->newLine(2);
-            
+
             $this->info('✅ Tenant deleted successfully!');
             $this->line('Summary:');
             $this->line("  - Users deleted: {$userCount}");
@@ -190,8 +193,8 @@ class DeleteTenant extends Command
             $this->line("  - Shares deleted: {$shareCount}");
             $this->line("  - Activity logs deleted: {$activityCount}");
             $this->line("  - Invitations deleted: {$invitationCount}");
-            
-            if (!$this->option('keep-files')) {
+
+            if (! $this->option('keep-files')) {
                 $this->line("  - Storage files: Deleted");
             } else {
                 $this->warn("  - Storage files: Retained (cleanup manually if needed)");
@@ -208,15 +211,15 @@ class DeleteTenant extends Command
                 ->log('Tenant deleted via console command');
 
             return Command::SUCCESS;
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             $bar->finish();
             $this->newLine(2);
-            
+
             $this->error('❌ Failed to delete tenant: ' . $e->getMessage());
             $this->error('All changes have been rolled back.');
-            
+
             return Command::FAILURE;
         }
     }
@@ -227,13 +230,13 @@ class DeleteTenant extends Command
     private function formatBytes($bytes, $precision = 2): string
     {
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        
+
         $bytes = max($bytes, 0);
         $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
-        
+
         $bytes /= pow(1024, $pow);
-        
+
         return round($bytes, $precision) . $units[$pow];
     }
 }

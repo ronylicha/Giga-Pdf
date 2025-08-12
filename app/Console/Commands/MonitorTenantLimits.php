@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 class MonitorTenantLimits extends Command
@@ -34,18 +33,19 @@ class MonitorTenantLimits extends Command
     public function handle()
     {
         $this->info('Monitoring tenant limits...');
-        
+
         // Get tenants to check
         $query = Tenant::withCount(['users', 'documents']);
-        
+
         if ($tenantId = $this->option('tenant')) {
             $query->where('id', $tenantId)->orWhere('slug', $tenantId);
         }
-        
+
         $tenants = $query->get();
-        
+
         if ($tenants->isEmpty()) {
             $this->warn('No tenants found.');
+
             return Command::SUCCESS;
         }
 
@@ -59,59 +59,59 @@ class MonitorTenantLimits extends Command
             $userLimit = $tenant->max_users;
             $userPercent = $userLimit > 0 ? ($userCount / $userLimit) * 100 : 0;
             $userStatus = $this->getLimitStatus($userPercent, $userCount >= $userLimit);
-            
+
             // Check storage limit
             $storageUsed = $tenant->getStorageUsage();
             $storageLimit = $tenant->max_storage_gb * 1024 * 1024 * 1024;
             $storagePercent = $storageLimit > 0 ? ($storageUsed / $storageLimit) * 100 : 0;
             $storageStatus = $this->getLimitStatus($storagePercent, $storageUsed >= $storageLimit);
-            
+
             // Check file size limit (check largest document)
             $largestFile = $tenant->documents()->max('size');
             $fileSizeLimit = $tenant->max_file_size_mb * 1024 * 1024;
             $largestFileStatus = $largestFile > $fileSizeLimit ? 'EXCEEDED' : 'OK';
-            
+
             // Check subscription status
             $subscriptionStatus = $this->getSubscriptionStatus($tenant);
-            
+
             // Determine overall status
             $violations = [];
             $warnings = [];
-            
+
             if ($userCount >= $userLimit) {
                 $violations[] = 'user_limit';
             } elseif ($userPercent >= 90) {
                 $warnings[] = 'user_limit';
             }
-            
+
             if ($storageUsed >= $storageLimit) {
                 $violations[] = 'storage_limit';
             } elseif ($storagePercent >= 90) {
                 $warnings[] = 'storage_limit';
             }
-            
+
             if ($largestFile > $fileSizeLimit) {
                 $violations[] = 'file_size_limit';
             }
-            
-            if (!$tenant->isSubscriptionActive()) {
+
+            if (! $tenant->isSubscriptionActive()) {
                 $violations[] = 'subscription_expired';
             }
-            
-            if (!empty($violations)) {
+
+            if (! empty($violations)) {
                 $violationTenants[] = [
                     'tenant' => $tenant,
                     'violations' => $violations,
                 ];
             }
-            
-            if (!empty($warnings)) {
+
+            if (! empty($warnings)) {
                 $warningTenants[] = [
                     'tenant' => $tenant,
                     'warnings' => $warnings,
                 ];
             }
-            
+
             $data[] = [
                 'ID' => $tenant->id,
                 'Name' => $tenant->name,
@@ -130,10 +130,10 @@ class MonitorTenantLimits extends Command
         $this->outputResults($data);
 
         // Show violations
-        if (!empty($violationTenants)) {
+        if (! empty($violationTenants)) {
             $this->newLine();
             $this->error('🚨 Limit Violations Detected:');
-            
+
             foreach ($violationTenants as $violation) {
                 $tenant = $violation['tenant'];
                 $this->line(sprintf(
@@ -142,22 +142,22 @@ class MonitorTenantLimits extends Command
                     $tenant->id,
                     implode(', ', $violation['violations'])
                 ));
-                
-                if ($this->option('suspend') && !$tenant->is_suspended) {
+
+                if ($this->option('suspend') && ! $tenant->is_suspended) {
                     $this->suspendTenant($tenant, $violation['violations']);
                 }
             }
-            
+
             if ($this->option('alert')) {
                 $this->sendViolationAlerts($violationTenants);
             }
         }
 
         // Show warnings
-        if (!empty($warningTenants)) {
+        if (! empty($warningTenants)) {
             $this->newLine();
             $this->warn('⚠️  Limit Warnings (>90% usage):');
-            
+
             foreach ($warningTenants as $warning) {
                 $tenant = $warning['tenant'];
                 $this->line(sprintf(
@@ -167,7 +167,7 @@ class MonitorTenantLimits extends Command
                     implode(', ', $warning['warnings'])
                 ));
             }
-            
+
             if ($this->option('alert')) {
                 $this->sendWarningAlerts($warningTenants);
             }
@@ -181,7 +181,7 @@ class MonitorTenantLimits extends Command
         $this->line('Suspended Tenants: ' . $tenants->where('is_suspended', true)->count());
         $this->line('Tenants with Violations: ' . count($violationTenants));
         $this->line('Tenants with Warnings: ' . count($warningTenants));
-        
+
         // Detailed statistics
         $this->newLine();
         $this->info('Resource Usage Statistics:');
@@ -190,6 +190,7 @@ class MonitorTenantLimits extends Command
         }), 1) . '%');
         $this->line('Average Storage Usage: ' . round($tenants->avg(function ($t) {
             $limit = $t->max_storage_gb * 1024 * 1024 * 1024;
+
             return $limit > 0 ? ($t->getStorageUsage() / $limit) * 100 : 0;
         }), 1) . '%');
         $this->line('Total Users: ' . $tenants->sum('users_count'));
@@ -222,14 +223,14 @@ class MonitorTenantLimits extends Command
         if ($tenant->is_suspended) {
             return '<fg=red>Suspended</>';
         }
-        
-        if (!$tenant->is_active) {
+
+        if (! $tenant->is_active) {
             return '<fg=yellow>Inactive</>';
         }
-        
+
         if ($tenant->subscription_expires_at) {
             $daysLeft = now()->diffInDays($tenant->subscription_expires_at, false);
-            
+
             if ($daysLeft < 0) {
                 return '<fg=red>Expired</>';
             } elseif ($daysLeft <= 7) {
@@ -238,7 +239,7 @@ class MonitorTenantLimits extends Command
                 return '<fg=cyan>Expires in ' . $daysLeft . ' days</>';
             }
         }
-        
+
         return '<fg=green>' . ucfirst($tenant->subscription_plan) . '</>';
     }
 
@@ -247,9 +248,9 @@ class MonitorTenantLimits extends Command
      */
     private function getOverallStatus(array $violations, array $warnings): string
     {
-        if (!empty($violations)) {
+        if (! empty($violations)) {
             return '<fg=red>VIOLATION</>';
-        } elseif (!empty($warnings)) {
+        } elseif (! empty($warnings)) {
             return '<fg=yellow>WARNING</>';
         } else {
             return '<fg=green>OK</>';
@@ -266,7 +267,7 @@ class MonitorTenantLimits extends Command
             'suspended_at' => now(),
             'suspended_reason' => 'Auto-suspended due to limit violations: ' . implode(', ', $violations),
         ]);
-        
+
         // Log the suspension
         activity()
             ->performedOn($tenant)
@@ -275,7 +276,7 @@ class MonitorTenantLimits extends Command
                 'auto_suspended' => true,
             ])
             ->log('Tenant auto-suspended for limit violations');
-        
+
         $this->line("    → Tenant suspended: {$tenant->name}");
     }
 
@@ -286,7 +287,7 @@ class MonitorTenantLimits extends Command
     {
         foreach ($violationTenants as $violation) {
             $tenant = $violation['tenant'];
-            
+
             // Log the alert
             activity()
                 ->performedOn($tenant)
@@ -295,10 +296,10 @@ class MonitorTenantLimits extends Command
                     'alert_type' => 'limit_violation',
                 ])
                 ->log('Limit violation alert sent');
-            
+
             // TODO: Send email notification
             // Mail::to($tenant->admin_email)->send(new LimitViolationMail($tenant, $violation['violations']));
-            
+
             $this->line("  Alert sent for: {$tenant->name}");
         }
     }
@@ -310,7 +311,7 @@ class MonitorTenantLimits extends Command
     {
         foreach ($warningTenants as $warning) {
             $tenant = $warning['tenant'];
-            
+
             // Log the alert
             activity()
                 ->performedOn($tenant)
@@ -319,10 +320,10 @@ class MonitorTenantLimits extends Command
                     'alert_type' => 'limit_warning',
                 ])
                 ->log('Limit warning alert sent');
-            
+
             // TODO: Send email notification
             // Mail::to($tenant->admin_email)->send(new LimitWarningMail($tenant, $warning['warnings']));
-            
+
             $this->line("  Warning sent for: {$tenant->name}");
         }
     }
@@ -335,12 +336,14 @@ class MonitorTenantLimits extends Command
         switch ($this->option('format')) {
             case 'json':
                 $this->line(json_encode($data, JSON_PRETTY_PRINT));
+
                 break;
-                
+
             case 'csv':
                 $this->outputCsv($data);
+
                 break;
-                
+
             default:
                 $this->table(
                     ['ID', 'Name', 'Users', 'Storage', 'Max File', 'User Status', 'Storage Status', 'File Status', 'Subscription', 'Overall'],
@@ -357,10 +360,10 @@ class MonitorTenantLimits extends Command
         if (empty($data)) {
             return;
         }
-        
+
         // Headers
         $this->line(implode(',', array_keys($data[0])));
-        
+
         // Data rows
         foreach ($data as $row) {
             $values = array_map(function ($value) {
@@ -368,9 +371,10 @@ class MonitorTenantLimits extends Command
                 if (str_contains($value, ',') || str_contains($value, '"')) {
                     return '"' . str_replace('"', '""', $value) . '"';
                 }
+
                 return $value;
             }, $row);
-            
+
             $this->line(implode(',', $values));
         }
     }
@@ -383,15 +387,15 @@ class MonitorTenantLimits extends Command
         if ($bytes === null) {
             return '0B';
         }
-        
+
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        
+
         $bytes = max($bytes, 0);
         $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
-        
+
         $bytes /= pow(1024, $pow);
-        
+
         return round($bytes, $precision) . $units[$pow];
     }
 }

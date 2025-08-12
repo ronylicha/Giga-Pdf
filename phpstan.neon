@@ -1,0 +1,16 @@
+parameters:
+    level: 5
+    paths:
+        - app
+        - config
+        - database
+        - routes
+        - tests
+    excludePaths:
+        - database/migrations/*
+    ignoreErrors:
+        - '#PHPDoc tag @var#'
+        - '#Method .* has no return type specified#'
+        - '#Call to an undefined method#'
+    reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: false

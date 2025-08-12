@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
-use Symfony\Component\Process\Exception\ProcessFailedException;
 
 class InstallGigaPdf extends Command
 {
@@ -50,23 +49,24 @@ class InstallGigaPdf extends Command
         $this->info('');
 
         // Check if already installed
-        if ($this->isInstalled() && !$this->option('force')) {
+        if ($this->isInstalled() && ! $this->option('force')) {
             $this->error('Giga-PDF is already installed. Use --force to reinstall.');
+
             return 1;
         }
 
         // Check dependencies
-        if (!$this->option('skip-deps')) {
+        if (! $this->option('skip-deps')) {
             $this->checkDependencies();
         }
-        
+
         // Clean unused dependencies if requested
         if ($this->option('clean-deps')) {
             $this->cleanUnusedDependencies();
         }
-        
+
         // Install PyMuPDF if requested or by default
-        if ($this->option('install-pymupdf') || !$this->option('skip-deps')) {
+        if ($this->option('install-pymupdf') || ! $this->option('skip-deps')) {
             $this->installPyMuPDF();
         }
 
@@ -83,7 +83,7 @@ class InstallGigaPdf extends Command
         $this->installAssets();
 
         // Configure workers
-        if (!$this->option('no-workers')) {
+        if (! $this->option('no-workers')) {
             $this->configureWorkers();
         }
 
@@ -131,7 +131,7 @@ class InstallGigaPdf extends Command
     protected function checkDependencies(): void
     {
         $this->info('Checking system dependencies...');
-        
+
         $requirements = [
             'PHP Version >= 8.2' => version_compare(PHP_VERSION, '8.2.0', '>='),
             'BCMath Extension' => extension_loaded('bcmath'),
@@ -182,7 +182,7 @@ class InstallGigaPdf extends Command
         foreach ($binaries as $name => $config) {
             $process = Process::fromShellCommandline($config['command']);
             $process->setTimeout(5);
-            
+
             try {
                 $process->run();
                 if ($process->isSuccessful()) {
@@ -221,9 +221,9 @@ class InstallGigaPdf extends Command
         }
 
         $this->info('All required dependencies are installed.');
-        
+
         // Highlight missing recommended tools
-        if (!empty($missingRecommended)) {
+        if (! empty($missingRecommended)) {
             $this->info('');
             $this->warn('⚠️  RECOMMENDED TOOLS MISSING FOR PDF PASSWORD REMOVAL:');
             foreach ($missingRecommended as $tool) {
@@ -231,55 +231,55 @@ class InstallGigaPdf extends Command
             }
             $this->info('');
         }
-        
+
         // Offer to install missing optional dependencies
-        if (!empty($missingOptional)) {
+        if (! empty($missingOptional)) {
             $this->info('');
             $this->warn('Some optional dependencies are missing. These are needed for PDF features:');
-            
+
             // Prioritize qpdf and ghostscript for password removal
             if (in_array('qpdf', $missingOptional) || in_array('ghostscript', $missingOptional)) {
                 $this->installPdfTools();
             }
-            
+
             if (in_array('tesseract', $missingOptional)) {
                 $this->installTesseract();
             }
-            
+
             if (in_array('pdftotext', $missingOptional)) {
                 $this->installPdftotext();
             }
-            
+
             if (in_array('libreoffice', $missingOptional)) {
                 $this->offerLibreOfficeInstallation();
             }
-            
+
             if (in_array('redis-server', $missingOptional)) {
                 $this->offerRedisInstallation();
             }
-            
+
             if (in_array('wkhtmltopdf', $missingOptional)) {
                 $this->installWkhtmltopdf();
             }
-            
-            if (in_array('pdftohtml', $missingOptional) && !in_array('qpdf', $missingOptional)) {
+
+            if (in_array('pdftohtml', $missingOptional) && ! in_array('qpdf', $missingOptional)) {
                 $this->installPdfTools();
             }
-            
+
             if (in_array('convert', $missingOptional) || in_array('ImageMagick', $missingOptional)) {
                 $this->installImageMagick();
             }
-            
+
             if (in_array('python3', $missingOptional) || in_array('pip3', $missingOptional)) {
                 $this->installPythonTools();
             }
         }
-        
+
         // Always check and install Python PDF libraries if Python is available
         if ($this->commandExists('python3') && $this->commandExists('pip3')) {
             $this->checkAndInstallPythonPdfLibraries();
         }
-        
+
         $this->info('');
     }
 
@@ -291,7 +291,7 @@ class InstallGigaPdf extends Command
         $this->info('Setting up environment configuration...');
 
         // Check if .env exists
-        if (!file_exists(base_path('.env'))) {
+        if (! file_exists(base_path('.env'))) {
             copy(base_path('.env.example'), base_path('.env'));
             $this->info('  ✓ Created .env file');
         }
@@ -305,7 +305,7 @@ class InstallGigaPdf extends Command
         // Configure database
         $dbConfig = $this->askDatabaseConfiguration();
         $this->updateEnvFile($dbConfig);
-        
+
         // Configure Redis
         if ($this->confirm('Do you want to configure Redis? (recommended)', true)) {
             $redisConfig = [
@@ -347,7 +347,7 @@ class InstallGigaPdf extends Command
     protected function askDatabaseConfiguration(): array
     {
         $this->info('Database Configuration:');
-        
+
         return [
             'DB_CONNECTION' => 'mysql',
             'DB_HOST' => $this->ask('Database host', '127.0.0.1'),
@@ -371,7 +371,7 @@ class InstallGigaPdf extends Command
             $this->info('  ✓ Database connection successful');
         } catch (\Exception $e) {
             $this->error('  ✗ Could not connect to database: ' . $e->getMessage());
-            
+
             if ($this->confirm('Do you want to create the database?', true)) {
                 $this->createDatabase();
             } else {
@@ -394,11 +394,11 @@ class InstallGigaPdf extends Command
             '--provider' => 'Spatie\Activitylog\ActivitylogServiceProvider',
             '--tag' => 'migrations',
         ]);
-        
+
         // Run vendor migrations
         Artisan::call('migrate', ['--force' => true]);
         $this->info('  ✓ Vendor migrations completed');
-        
+
         $this->info('');
     }
 
@@ -409,15 +409,15 @@ class InstallGigaPdf extends Command
     {
         $config = config('database.connections.mysql');
         $database = $config['database'];
-        
+
         // Connect without database
         $dsn = sprintf('mysql:host=%s;port=%s', $config['host'], $config['port']);
-        
+
         try {
             $pdo = new \PDO($dsn, $config['username'], $config['password']);
             $pdo->exec("CREATE DATABASE IF NOT EXISTS `$database` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
             $this->info('  ✓ Database created successfully');
-            
+
             // Reconnect with database
             DB::purge();
             DB::reconnect();
@@ -439,7 +439,7 @@ class InstallGigaPdf extends Command
         $adminName = $this->ask('Super Admin name', 'Super Admin');
         $adminEmail = $this->ask('Super Admin email', 'admin@giga-pdf.local');
         $adminPassword = $this->secret('Super Admin password (min 8 characters)') ?: 'Admin@123456';
-        
+
         while (strlen($adminPassword) < 8) {
             $this->error('Password must be at least 8 characters long.');
             $adminPassword = $this->secret('Super Admin password (min 8 characters)');
@@ -454,13 +454,13 @@ class InstallGigaPdf extends Command
 
         // First create the super admin (without transaction since tenant_id is null)
         $this->info('  Creating Super Admin...');
-        
+
         // Check if super admin already exists
         $existingAdmin = User::where('email', $adminEmail)->first();
-        if (!$existingAdmin) {
+        if (! $existingAdmin) {
             // Create roles and permissions first
             $this->createRolesAndPermissions();
-            
+
             // Create the super admin
             $superAdmin = User::create([
                 'name' => $adminName,
@@ -470,35 +470,35 @@ class InstallGigaPdf extends Command
                 'is_active' => true,
                 'email_verified_at' => now(),
             ]);
-            
+
             // Don't set team context for super-admin
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
-            
+
             // Check if super-admin role exists, create if not
             $superAdminRole = \Spatie\Permission\Models\Role::where('name', 'super-admin')
                 ->whereNull('team_id')
                 ->first();
-                
-            if (!$superAdminRole) {
+
+            if (! $superAdminRole) {
                 $superAdminRole = \Spatie\Permission\Models\Role::create([
                     'name' => 'super-admin',
                     'guard_name' => 'web',
-                    'team_id' => null
+                    'team_id' => null,
                 ]);
             }
-            
+
             // Assign super-admin role
             $superAdmin->assignRole('super-admin');
-            
+
             $this->info('  ✓ Super Admin created successfully');
         } else {
             $this->warn('  Super admin with this email already exists.');
             $superAdmin = $existingAdmin;
         }
-        
+
         // Now create the tenant in a transaction
         DB::beginTransaction();
-        
+
         try {
             // Create tenant
             $tenant = Tenant::create([
@@ -527,7 +527,7 @@ class InstallGigaPdf extends Command
             $this->info('  ✓ Tenant created: ' . $tenantName);
 
             DB::commit();
-            
+
             $this->info('');
             $this->info('╔══════════════════════════════════════════════════════════╗');
             $this->info('║                    ADMIN CREDENTIALS                        ║');
@@ -537,7 +537,7 @@ class InstallGigaPdf extends Command
             $this->info('║  Tenant:   ' . str_pad($tenantName, 46) . '║');
             $this->info('╚══════════════════════════════════════════════════════════╝');
             $this->info('');
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             $this->error('Failed to create super admin: ' . $e->getMessage());
@@ -551,16 +551,16 @@ class InstallGigaPdf extends Command
     protected function createRolesAndPermissions(): void
     {
         $this->info('  Creating roles and permissions...');
-        
+
         // Create roles
         $roles = [
             'super-admin' => 'Super Administrator with full system access',
             'tenant-admin' => 'Tenant Administrator',
             'manager' => 'Manager with user management capabilities',
-            'editor' => 'Editor with document editing capabilities', 
-            'viewer' => 'Viewer with read-only access'
+            'editor' => 'Editor with document editing capabilities',
+            'viewer' => 'Viewer with read-only access',
         ];
-        
+
         foreach ($roles as $roleName => $description) {
             // Only create global roles (without tenant_id)
             if ($roleName === 'super-admin') {
@@ -571,53 +571,53 @@ class InstallGigaPdf extends Command
             }
             // Skip tenant-specific roles here as they will be created per tenant
         }
-        
+
         // Create permissions
         $permissions = [
             // User management
             'users.view',
-            'users.create', 
+            'users.create',
             'users.edit',
             'users.delete',
-            
+
             // Document management
             'documents.view',
             'documents.create',
-            'documents.edit', 
+            'documents.edit',
             'documents.delete',
             'documents.share',
-            
+
             // Conversion
             'conversions.create',
             'conversions.view',
-            
+
             // Tenant management
             'tenant.manage',
             'tenant.settings',
-            
+
             // System management
             'system.manage',
             'system.logs',
             'system.backup',
         ];
-        
+
         foreach ($permissions as $permissionName) {
             \Spatie\Permission\Models\Permission::firstOrCreate(
                 ['name' => $permissionName, 'guard_name' => 'web']
             );
         }
-        
+
         // Assign permissions to super admin role only
         $superAdminRole = \Spatie\Permission\Models\Role::where('name', 'super-admin')
             ->whereNull('team_id')
             ->first();
-        
+
         if ($superAdminRole) {
             $superAdminRole->syncPermissions(\Spatie\Permission\Models\Permission::all());
         }
-        
+
         // Tenant-specific roles will get their permissions when created per tenant
-        
+
         $this->info('  ✓ Roles and permissions configured');
     }
 
@@ -634,7 +634,7 @@ class InstallGigaPdf extends Command
         $process->setTimeout(300);
         $process->run();
 
-        if (!$process->isSuccessful()) {
+        if (! $process->isSuccessful()) {
             $this->error('  ✗ Failed to install npm packages');
             $this->error($process->getErrorOutput());
         } else {
@@ -647,7 +647,7 @@ class InstallGigaPdf extends Command
         $process->setTimeout(300);
         $process->run();
 
-        if (!$process->isSuccessful()) {
+        if (! $process->isSuccessful()) {
             $this->error('  ✗ Failed to build assets');
             $this->error($process->getErrorOutput());
         } else {
@@ -670,7 +670,7 @@ class InstallGigaPdf extends Command
 
         $appPath = base_path();
         $appName = 'gigapdf';
-        
+
         $horizonConfig = <<<EOT
 [program:{$appName}-horizon]
 process_name=%(program_name)s
@@ -719,7 +719,7 @@ EOT;
         if ($this->confirm("Do you want to save supervisor configuration to {$configFile}?", true)) {
             $tempFile = sys_get_temp_dir() . "/{$appName}.conf";
             file_put_contents($tempFile, $supervisorConfig);
-            
+
             $this->info("  Supervisor configuration saved to: {$tempFile}");
             $this->info("  Run the following command to install it:");
             $this->info("  sudo cp {$tempFile} {$configFile}");
@@ -740,10 +740,10 @@ EOT;
     protected function installDemoData(): void
     {
         $this->info('Installing demo data...');
-        
+
         // Create demo users
         $tenant = Tenant::first();
-        
+
         $demoUsers = [
             ['name' => 'John Manager', 'email' => 'manager@demo.local', 'role' => 'manager'],
             ['name' => 'Jane Editor', 'email' => 'editor@demo.local', 'role' => 'editor'],
@@ -762,7 +762,7 @@ EOT;
         }
 
         $this->info('  ✓ Demo users created (password: "password")');
-        
+
         // Create demo documents
         $this->info('  ✓ Demo data installed');
         $this->info('');
@@ -810,7 +810,7 @@ EOT;
         }
 
         file_put_contents($envPath, $envContent);
-        
+
         // Reload configuration
         Artisan::call('config:clear');
     }
@@ -822,12 +822,12 @@ EOT;
     {
         $this->warn('');
         $this->warn('Tesseract OCR is required for text extraction from images and scanned PDFs.');
-        
+
         if ($this->confirm('Do you want to install Tesseract OCR?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('Installing Tesseract OCR...');
-            
+
             $commands = [];
             switch ($os) {
                 case 'ubuntu':
@@ -837,8 +837,9 @@ EOT;
                         'sudo apt-get install -y tesseract-ocr',
                         'sudo apt-get install -y tesseract-ocr-fra tesseract-ocr-deu tesseract-ocr-spa', // Additional languages
                     ];
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
@@ -847,15 +848,17 @@ EOT;
                         'sudo yum install -y tesseract',
                         'sudo yum install -y tesseract-langpack-fra tesseract-langpack-deu tesseract-langpack-spa',
                     ];
+
                     break;
-                    
+
                 case 'macos':
                     $commands = [
                         'brew install tesseract',
                         'brew install tesseract-lang', // All languages
                     ];
+
                     break;
-                    
+
                 default:
                     $this->error('Automatic installation not supported for your OS.');
                     $this->info('Please install Tesseract manually:');
@@ -863,22 +866,24 @@ EOT;
                     $this->info('  CentOS/RHEL: sudo yum install tesseract');
                     $this->info('  macOS: brew install tesseract');
                     $this->info('  Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki');
+
                     return;
             }
-            
+
             foreach ($commands as $command) {
                 $this->info("Running: $command");
                 $process = Process::fromShellCommandline($command);
                 $process->setTimeout(300);
                 $process->run();
-                
-                if (!$process->isSuccessful()) {
+
+                if (! $process->isSuccessful()) {
                     $this->error('Failed to install Tesseract. Please install it manually.');
                     $this->error($process->getErrorOutput());
+
                     return;
                 }
             }
-            
+
             $this->info('  ✓ Tesseract OCR installed successfully');
         } else {
             $this->info('Skipping Tesseract installation.');
@@ -893,29 +898,32 @@ EOT;
     {
         $this->warn('');
         $this->warn('pdftotext is required for extracting text from PDF files.');
-        
+
         if ($this->confirm('Do you want to install pdftotext?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('Installing pdftotext...');
-            
+
             $commands = [];
             switch ($os) {
                 case 'ubuntu':
                 case 'debian':
                     $commands = ['sudo apt-get update', 'sudo apt-get install -y poppler-utils'];
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
                     $commands = ['sudo yum install -y poppler-utils'];
+
                     break;
-                    
+
                 case 'macos':
                     $commands = ['brew install poppler'];
+
                     break;
-                    
+
                 default:
                     $this->error('Automatic installation not supported for your OS.');
                     $this->info('Please install poppler-utils manually:');
@@ -923,22 +931,24 @@ EOT;
                     $this->info('  CentOS/RHEL: sudo yum install poppler-utils');
                     $this->info('  macOS: brew install poppler');
                     $this->info('  Windows: Download from https://poppler.freedesktop.org/');
+
                     return;
             }
-            
+
             foreach ($commands as $command) {
                 $this->info("Running: $command");
                 $process = Process::fromShellCommandline($command);
                 $process->setTimeout(300);
                 $process->run();
-                
-                if (!$process->isSuccessful()) {
+
+                if (! $process->isSuccessful()) {
                     $this->error('Failed to install pdftotext. Please install it manually.');
                     $this->error($process->getErrorOutput());
+
                     return;
                 }
             }
-            
+
             $this->info('  ✓ pdftotext installed successfully');
         } else {
             $this->info('Skipping pdftotext installation.');
@@ -953,35 +963,38 @@ EOT;
     {
         $this->warn('');
         $this->warn('LibreOffice is required for converting Office documents (Word, Excel, PowerPoint) to PDF.');
-        
+
         if ($this->confirm('Do you want instructions for installing LibreOffice?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('');
             $this->info('LibreOffice Installation Instructions:');
-            
+
             switch ($os) {
                 case 'ubuntu':
                 case 'debian':
                     $this->info('  sudo apt-get update');
                     $this->info('  sudo apt-get install -y libreoffice');
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
                     $this->info('  sudo yum install -y libreoffice');
+
                     break;
-                    
+
                 case 'macos':
                     $this->info('  brew install --cask libreoffice');
                     $this->info('  Or download from: https://www.libreoffice.org/download/');
+
                     break;
-                    
+
                 default:
                     $this->info('  Download from: https://www.libreoffice.org/download/');
             }
-            
+
             $this->info('');
             $this->info('For headless operation (recommended for servers):');
             $this->info('  Start LibreOffice in headless mode:');
@@ -996,13 +1009,13 @@ EOT;
     {
         $this->warn('');
         $this->warn('Redis is recommended for caching and queue management.');
-        
+
         if ($this->confirm('Do you want instructions for installing Redis?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('');
             $this->info('Redis Installation Instructions:');
-            
+
             switch ($os) {
                 case 'ubuntu':
                 case 'debian':
@@ -1010,8 +1023,9 @@ EOT;
                     $this->info('  sudo apt-get install -y redis-server');
                     $this->info('  sudo systemctl enable redis-server');
                     $this->info('  sudo systemctl start redis-server');
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
@@ -1019,17 +1033,19 @@ EOT;
                     $this->info('  sudo yum install -y redis');
                     $this->info('  sudo systemctl enable redis');
                     $this->info('  sudo systemctl start redis');
+
                     break;
-                    
+
                 case 'macos':
                     $this->info('  brew install redis');
                     $this->info('  brew services start redis');
+
                     break;
-                    
+
                 default:
                     $this->info('  Download from: https://redis.io/download');
             }
-            
+
             $this->info('');
             $this->info('Don\'t forget to install PHP Redis extension:');
             $this->info('  pecl install redis');
@@ -1044,35 +1060,38 @@ EOT;
     {
         $this->warn('');
         $this->warn('wkhtmltopdf is required for HTML to PDF conversion.');
-        
+
         if ($this->confirm('Do you want to install wkhtmltopdf?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('Installing wkhtmltopdf...');
-            
+
             $commands = [];
             switch ($os) {
                 case 'ubuntu':
                 case 'debian':
                     $commands = [
                         'sudo apt-get update',
-                        'sudo apt-get install -y wkhtmltopdf wkhtmltoimage'
+                        'sudo apt-get install -y wkhtmltopdf wkhtmltoimage',
                     ];
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
                     $commands = [
                         'sudo yum install -y epel-release',
-                        'sudo yum install -y wkhtmltopdf'
+                        'sudo yum install -y wkhtmltopdf',
                     ];
+
                     break;
-                    
+
                 case 'macos':
                     $commands = ['brew install --cask wkhtmltopdf'];
+
                     break;
-                    
+
                 default:
                     $this->error('Automatic installation not supported for your OS.');
                     $this->info('Please install wkhtmltopdf manually:');
@@ -1080,22 +1099,24 @@ EOT;
                     $this->info('  CentOS/RHEL: sudo yum install wkhtmltopdf');
                     $this->info('  macOS: brew install --cask wkhtmltopdf');
                     $this->info('  Download: https://wkhtmltopdf.org/downloads.html');
+
                     return;
             }
-            
+
             foreach ($commands as $command) {
                 $this->info("Running: $command");
                 $process = Process::fromShellCommandline($command);
                 $process->setTimeout(300);
                 $process->run();
-                
-                if (!$process->isSuccessful()) {
+
+                if (! $process->isSuccessful()) {
                     $this->error('Failed to install wkhtmltopdf. Please install it manually.');
                     $this->error($process->getErrorOutput());
+
                     return;
                 }
             }
-            
+
             $this->info('  ✓ wkhtmltopdf installed successfully');
         } else {
             $this->info('Skipping wkhtmltopdf installation.');
@@ -1110,12 +1131,12 @@ EOT;
     {
         $this->warn('');
         $this->warn('PDF tools are required for PDF manipulation, conversion, and password removal.');
-        
+
         if ($this->confirm('Do you want to install PDF tools?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('Installing PDF tools...');
-            
+
             $commands = [];
             switch ($os) {
                 case 'ubuntu':
@@ -1125,10 +1146,11 @@ EOT;
                         'sudo apt-get install -y poppler-utils',
                         'sudo apt-get install -y pdftk',
                         'sudo apt-get install -y qpdf',        // Essential for password removal
-                        'sudo apt-get install -y ghostscript'  // Essential for forced password removal
+                        'sudo apt-get install -y ghostscript',  // Essential for forced password removal
                     ];
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
@@ -1136,19 +1158,21 @@ EOT;
                         'sudo yum install -y poppler-utils',
                         'sudo yum install -y pdftk',
                         'sudo yum install -y qpdf',        // Essential for password removal
-                        'sudo yum install -y ghostscript'  // Essential for forced password removal
+                        'sudo yum install -y ghostscript',  // Essential for forced password removal
                     ];
+
                     break;
-                    
+
                 case 'macos':
                     $commands = [
                         'brew install poppler',
                         'brew install pdftk-java',
                         'brew install qpdf',        // Essential for password removal
-                        'brew install ghostscript'  // Essential for forced password removal
+                        'brew install ghostscript',  // Essential for forced password removal
                     ];
+
                     break;
-                    
+
                 default:
                     $this->error('Automatic installation not supported for your OS.');
                     $this->info('Please install PDF tools manually:');
@@ -1156,25 +1180,26 @@ EOT;
                     $this->info('  - ghostscript: For forced PDF unlocking');
                     $this->info('  - poppler-utils: For PDF text extraction');
                     $this->info('  - pdftk: For PDF manipulation');
+
                     return;
             }
-            
+
             $successCount = 0;
             $totalCommands = count($commands);
-            
+
             foreach ($commands as $command) {
                 $this->info("Running: $command");
                 $process = Process::fromShellCommandline($command);
                 $process->setTimeout(300);
                 $process->run();
-                
+
                 if ($process->isSuccessful()) {
                     $successCount++;
                 } else {
                     $this->warn("Failed to execute: $command");
                 }
             }
-            
+
             if ($successCount === $totalCommands) {
                 $this->info('  ✓ All PDF tools installed successfully');
                 $this->info('    - qpdf: PDF password removal and decryption');
@@ -1198,12 +1223,12 @@ EOT;
     {
         $this->warn('');
         $this->warn('ImageMagick is required for image processing and PDF to image conversion.');
-        
+
         if ($this->confirm('Do you want to install ImageMagick?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('Installing ImageMagick...');
-            
+
             $commands = [];
             switch ($os) {
                 case 'ubuntu':
@@ -1211,57 +1236,62 @@ EOT;
                     $commands = [
                         'sudo apt-get update',
                         'sudo apt-get install -y imagemagick',
-                        'sudo apt-get install -y libmagickwand-dev'
+                        'sudo apt-get install -y libmagickwand-dev',
                     ];
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
                     $commands = [
                         'sudo yum install -y ImageMagick',
-                        'sudo yum install -y ImageMagick-devel'
+                        'sudo yum install -y ImageMagick-devel',
                     ];
+
                     break;
-                    
+
                 case 'macos':
                     $commands = ['brew install imagemagick'];
+
                     break;
-                    
+
                 default:
                     $this->error('Automatic installation not supported for your OS.');
                     $this->info('Please install ImageMagick manually:');
                     $this->info('  Ubuntu/Debian: sudo apt-get install imagemagick');
                     $this->info('  CentOS/RHEL: sudo yum install ImageMagick');
                     $this->info('  macOS: brew install imagemagick');
+
                     return;
             }
-            
+
             foreach ($commands as $command) {
                 $this->info("Running: $command");
                 $process = Process::fromShellCommandline($command);
                 $process->setTimeout(300);
                 $process->run();
-                
-                if (!$process->isSuccessful()) {
+
+                if (! $process->isSuccessful()) {
                     $this->error('Failed to install ImageMagick. Please install it manually.');
                     $this->error($process->getErrorOutput());
+
                     return;
                 }
             }
-            
+
             // Install PHP Imagick extension
             $this->info('Installing PHP Imagick extension...');
             $process = Process::fromShellCommandline('pecl install imagick');
             $process->setTimeout(300);
             $process->run();
-            
-            if (!$process->isSuccessful()) {
+
+            if (! $process->isSuccessful()) {
                 $this->warn('PHP Imagick extension installation failed. You may need to install it manually.');
                 $this->info('  Ubuntu/Debian: sudo apt-get install php-imagick');
                 $this->info('  CentOS/RHEL: sudo yum install php-imagick');
             }
-            
+
             $this->info('  ✓ ImageMagick installed successfully');
         } else {
             $this->info('Skipping ImageMagick installation.');
@@ -1276,12 +1306,12 @@ EOT;
     {
         $this->warn('');
         $this->warn('Python tools are required for advanced table extraction from PDFs.');
-        
+
         if ($this->confirm('Do you want to install Python tools for table extraction?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('Installing Python and pip...');
-            
+
             $commands = [];
             switch ($os) {
                 case 'ubuntu':
@@ -1289,42 +1319,46 @@ EOT;
                     $commands = [
                         'sudo apt-get update',
                         'sudo apt-get install -y python3 python3-pip python3-dev',
-                        'sudo apt-get install -y default-jre'  // Required for tabula-py
+                        'sudo apt-get install -y default-jre',  // Required for tabula-py
                     ];
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
                     $commands = [
                         'sudo yum install -y python3 python3-pip python3-devel',
-                        'sudo yum install -y java-11-openjdk'
+                        'sudo yum install -y java-11-openjdk',
                     ];
+
                     break;
-                    
+
                 case 'macos':
                     $commands = [
                         'brew install python3',
-                        'brew install openjdk'
+                        'brew install openjdk',
                     ];
+
                     break;
-                    
+
                 default:
                     $this->error('Automatic installation not supported for your OS.');
+
                     return;
             }
-            
+
             foreach ($commands as $command) {
                 $this->info("Running: $command");
                 $process = Process::fromShellCommandline($command);
                 $process->setTimeout(300);
                 $process->run();
-                
-                if (!$process->isSuccessful()) {
+
+                if (! $process->isSuccessful()) {
                     $this->warn('Some Python dependencies may not have installed correctly.');
                 }
             }
-            
+
             // Install Python packages for PDF processing and table extraction
             $this->info('Installing Python packages for PDF processing...');
             $pythonPackages = [
@@ -1338,26 +1372,26 @@ EOT;
                 'pytesseract' => 'OCR support for scanned PDFs',
                 'opencv-python-headless' => 'Computer vision for table detection',
                 'Pillow' => 'Image processing library',
-                'reportlab' => 'PDF generation library'
+                'reportlab' => 'PDF generation library',
             ];
-            
+
             // Try to install all packages at once for efficiency
             $allPackages = implode(' ', array_keys($pythonPackages));
             $this->info('Installing all Python packages...');
-            
+
             // Try with --break-system-packages for newer systems
             $process = Process::fromShellCommandline("pip3 install $allPackages --break-system-packages");
             $process->setTimeout(600);
             $process->run();
-            
-            if (!$process->isSuccessful()) {
+
+            if (! $process->isSuccessful()) {
                 // Fallback to user installation
                 $this->info('Trying user installation...');
                 $process = Process::fromShellCommandline("pip3 install --user $allPackages");
                 $process->setTimeout(600);
                 $process->run();
             }
-            
+
             if ($process->isSuccessful()) {
                 $this->info('  ✓ All Python packages installed successfully');
                 foreach ($pythonPackages as $package => $description) {
@@ -1368,10 +1402,10 @@ EOT;
                 $this->info('You can manually install them with:');
                 $this->info("  pip3 install $allPackages --break-system-packages");
             }
-            
+
             // Create Python extraction scripts
             $this->createPythonExtractionScripts();
-            
+
             $this->info('  ✓ Python tools installed successfully');
         } else {
             $this->info('Skipping Python tools installation.');
@@ -1385,26 +1419,26 @@ EOT;
     protected function checkAndInstallPythonPdfLibraries(): void
     {
         $this->info('Checking Python PDF libraries...');
-        
+
         // Check if pypdf is installed (for password removal)
         exec('python3 -c "import pypdf" 2>&1', $output, $returnCode);
         $pypdfInstalled = ($returnCode === 0);
-        
+
         // Check if tabula-py is installed (for table extraction)
         exec('python3 -c "import tabula" 2>&1', $output, $returnCode);
         $tabulaInstalled = ($returnCode === 0);
-        
-        if (!$pypdfInstalled || !$tabulaInstalled) {
+
+        if (! $pypdfInstalled || ! $tabulaInstalled) {
             $this->warn('Some Python PDF libraries are not installed.');
             if ($this->confirm('Do you want to install them now for better PDF features?', true)) {
                 // Updated package list to include pypdf for password removal
                 $packages = 'pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml tabula-py pandas pdfplumber openpyxl pytesseract Pillow reportlab';
-                
+
                 $this->info('Installing Python PDF libraries...');
                 $process = Process::fromShellCommandline("pip3 install $packages --break-system-packages");
                 $process->setTimeout(600);
                 $process->run();
-                
+
                 if ($process->isSuccessful()) {
                     $this->info('  ✓ Python PDF libraries installed successfully');
                     $this->info('    - pypdf: PDF password removal and manipulation');
@@ -1420,7 +1454,7 @@ EOT;
             $this->info('  ✓ Python PDF libraries are already installed');
         }
     }
-    
+
     /**
      * Install qpdf for high-quality PDF manipulation
      */
@@ -1428,34 +1462,37 @@ EOT;
     {
         $this->warn('');
         $this->warn('qpdf is highly recommended for high-quality PDF split/merge operations.');
-        
+
         if ($this->confirm('Do you want to install qpdf?', true)) {
             $os = $this->detectOS();
-            
+
             $this->info('Installing qpdf...');
-            
+
             $commands = [];
             switch ($os) {
                 case 'ubuntu':
                 case 'debian':
                     $commands = [
                         'sudo apt-get update',
-                        'sudo apt-get install -y qpdf'
+                        'sudo apt-get install -y qpdf',
                     ];
+
                     break;
-                    
+
                 case 'centos':
                 case 'rhel':
                 case 'fedora':
                     $commands = [
-                        'sudo yum install -y qpdf'
+                        'sudo yum install -y qpdf',
                     ];
+
                     break;
-                    
+
                 case 'macos':
                     $commands = ['brew install qpdf'];
+
                     break;
-                    
+
                 default:
                     $this->error('Automatic installation not supported for your OS.');
                     $this->info('Please install qpdf manually:');
@@ -1463,22 +1500,24 @@ EOT;
                     $this->info('  CentOS/RHEL: sudo yum install qpdf');
                     $this->info('  macOS: brew install qpdf');
                     $this->info('  Download: https://github.com/qpdf/qpdf');
+
                     return;
             }
-            
+
             foreach ($commands as $command) {
                 $this->info("Running: $command");
                 $process = Process::fromShellCommandline($command);
                 $process->setTimeout(300);
                 $process->run();
-                
-                if (!$process->isSuccessful()) {
+
+                if (! $process->isSuccessful()) {
                     $this->error('Failed to install qpdf. Please install it manually.');
                     $this->error($process->getErrorOutput());
+
                     return;
                 }
             }
-            
+
             $this->info('  ✓ qpdf installed successfully');
             $this->info('  qpdf provides lossless PDF manipulation for split, merge, and rotate operations.');
         } else {
@@ -1486,14 +1525,14 @@ EOT;
             $this->warn('Note: PDF split/merge will fall back to lower quality methods without qpdf.');
         }
     }
-    
+
     /**
      * Create Python scripts for table extraction
      */
     protected function createPythonExtractionScripts(): void
     {
         $this->info('Creating Python extraction scripts...');
-        
+
         // Create tabula extraction script
         $tabulaScript = <<<'PYTHON'
 #!/usr/bin/env python3
@@ -1540,7 +1579,7 @@ PYTHON;
 
         file_put_contents(base_path('extract_tables.py'), $tabulaScript);
         chmod(base_path('extract_tables.py'), 0755);
-        
+
         // Create camelot extraction script
         $camelotScript = <<<'PYTHON'
 #!/usr/bin/env python3
@@ -1595,7 +1634,7 @@ PYTHON;
 
         file_put_contents(base_path('extract_tables_camelot.py'), $camelotScript);
         chmod(base_path('extract_tables_camelot.py'), 0755);
-        
+
         $this->info('  ✓ Python extraction scripts created');
     }
 
@@ -1606,39 +1645,39 @@ PYTHON;
     {
         $this->info('');
         $this->info('Installing PyMuPDF for advanced PDF operations...');
-        
+
         // Check if Python3 and pip3 are available
-        if (!$this->commandExists('python3') || !$this->commandExists('pip3')) {
+        if (! $this->commandExists('python3') || ! $this->commandExists('pip3')) {
             $this->warn('Python3 or pip3 not found. Installing Python first...');
             $this->installPythonTools();
         }
-        
+
         // Install PyMuPDF and related packages
         $this->info('Installing PyMuPDF and dependencies...');
         $packages = 'PyMuPDF beautifulsoup4 lxml Pillow reportlab';
-        
+
         $process = Process::fromShellCommandline("pip3 install $packages --break-system-packages");
         $process->setTimeout(300);
         $process->run();
-        
-        if (!$process->isSuccessful()) {
+
+        if (! $process->isSuccessful()) {
             // Try user installation
             $process = Process::fromShellCommandline("pip3 install --user $packages");
             $process->setTimeout(300);
             $process->run();
         }
-        
-        if (!$process->isSuccessful()) {
+
+        if (! $process->isSuccessful()) {
             // Try with sudo for system-wide installation
             $this->info('Trying with sudo...');
             $process = Process::fromShellCommandline("sudo pip3 install $packages --break-system-packages");
             $process->setTimeout(300);
             $process->run();
         }
-        
+
         if ($process->isSuccessful()) {
             $this->info('  ✓ PyMuPDF and BeautifulSoup4 installed successfully');
-            
+
             // Create PyMuPDF extraction script
             $this->createPyMuPDFScript();
         } else {
@@ -1646,7 +1685,7 @@ PYTHON;
             $this->info("  sudo pip3 install $packages --break-system-packages");
         }
     }
-    
+
     /**
      * Create PyMuPDF extraction script
      */
@@ -1759,10 +1798,10 @@ PYTHON;
 
         file_put_contents(base_path('pymupdf_tools.py'), $script);
         chmod(base_path('pymupdf_tools.py'), 0755);
-        
+
         $this->info('  ✓ PyMuPDF extraction script created');
     }
-    
+
     /**
      * Clean unused dependencies
      */
@@ -1770,65 +1809,65 @@ PYTHON;
     {
         $this->info('');
         $this->info('Cleaning unused dependencies...');
-        
+
         // Remove unused Composer packages
         $unusedPackages = [
             'laravel/sail',  // Not needed in production
             'laravel/pail',  // Development tool
         ];
-        
+
         if ($this->confirm('Remove unused Composer packages?', true)) {
             foreach ($unusedPackages as $package) {
                 $this->info("Removing $package...");
                 $process = Process::fromShellCommandline("composer remove $package --no-interaction");
                 $process->setTimeout(300);
                 $process->run();
-                
+
                 if ($process->isSuccessful()) {
                     $this->info("  ✓ Removed $package");
                 }
             }
-            
+
             // Optimize autoloader
             $this->info('Optimizing Composer autoloader...');
             $process = Process::fromShellCommandline('composer dump-autoload --optimize');
             $process->setTimeout(300);
             $process->run();
-            
+
             if ($process->isSuccessful()) {
                 $this->info('  ✓ Composer autoloader optimized');
             }
         }
-        
+
         // Clean npm packages
         if ($this->confirm('Clean and reinstall npm packages?', true)) {
             $this->info('Cleaning npm packages...');
-            
+
             // Remove node_modules and package-lock
             $process = Process::fromShellCommandline('rm -rf node_modules package-lock.json');
             $process->run();
-            
+
             // Reinstall with production flag
             $this->info('Reinstalling npm packages (production only)...');
             $process = Process::fromShellCommandline('npm install --production');
             $process->setTimeout(600);
             $process->run();
-            
+
             if ($process->isSuccessful()) {
                 $this->info('  ✓ NPM packages cleaned and reinstalled');
             }
-            
+
             // Audit and fix vulnerabilities
             $this->info('Checking for vulnerabilities...');
             $process = Process::fromShellCommandline('npm audit fix');
             $process->setTimeout(300);
             $process->run();
-            
+
             if ($process->isSuccessful()) {
                 $this->info('  ✓ Vulnerabilities fixed');
             }
         }
-        
+
         // Clear all caches
         $this->info('Clearing all caches...');
         $cacheCommands = [
@@ -1836,17 +1875,17 @@ PYTHON;
             'cache:clear',
             'route:clear',
             'view:clear',
-            'event:clear'
+            'event:clear',
         ];
-        
+
         foreach ($cacheCommands as $command) {
             Artisan::call($command);
             $this->info("  ✓ $command executed");
         }
-        
+
         $this->info('  ✓ Cleanup completed');
     }
-    
+
     /**
      * Check if a command exists
      */
@@ -1854,9 +1893,10 @@ PYTHON;
     {
         $process = Process::fromShellCommandline("which $command");
         $process->run();
+
         return $process->isSuccessful();
     }
-    
+
     /**
      * Detect operating system
      */
@@ -1865,34 +1905,34 @@ PYTHON;
         if (PHP_OS_FAMILY === 'Darwin') {
             return 'macos';
         }
-        
+
         if (PHP_OS_FAMILY === 'Windows') {
             return 'windows';
         }
-        
+
         // For Linux, try to detect distribution
         if (file_exists('/etc/os-release')) {
             $osRelease = parse_ini_file('/etc/os-release');
             $id = strtolower($osRelease['ID'] ?? '');
-            
+
             if (in_array($id, ['ubuntu', 'debian'])) {
                 return 'ubuntu';
             }
-            
+
             if (in_array($id, ['centos', 'rhel', 'fedora', 'rocky', 'almalinux'])) {
                 return 'centos';
             }
         }
-        
+
         // Check for common commands
         if (shell_exec('which apt-get')) {
             return 'ubuntu';
         }
-        
+
         if (shell_exec('which yum')) {
             return 'centos';
         }
-        
+
         return 'unknown';
     }
 }

@@ -2,15 +2,14 @@
 
 namespace Tests\Unit\Services;
 
-use Tests\TestCase;
-use App\Services\PDFService;
 use App\Models\Document;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\PDFService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Http\UploadedFile;
 use Mockery;
+use Tests\TestCase;
 
 class PDFServiceTest extends TestCase
 {
@@ -23,11 +22,11 @@ class PDFServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         Storage::fake('local');
-        
+
         $this->pdfService = new PDFService();
-        
+
         $this->tenant = Tenant::factory()->create();
         $this->user = User::factory()->create(['tenant_id' => $this->tenant->id]);
     }
@@ -40,17 +39,17 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         $doc2 = Document::factory()->create([
             'tenant_id' => $this->tenant->id,
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         // Create fake PDF files
         Storage::put($doc1->stored_name, $this->generatePDFContent('Document 1'));
         Storage::put($doc2->stored_name, $this->generatePDFContent('Document 2'));
-        
+
         // Test merge
         $mergedDoc = $this->pdfService->merge(
             [$doc1, $doc2],
@@ -58,7 +57,7 @@ class PDFServiceTest extends TestCase
             $this->user->id,
             $this->tenant->id
         );
-        
+
         $this->assertInstanceOf(Document::class, $mergedDoc);
         $this->assertEquals('merged_document.pdf', $mergedDoc->original_name);
         $this->assertEquals('pdf', $mergedDoc->extension);
@@ -74,16 +73,16 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         // Create fake multi-page PDF
         Storage::put($document->stored_name, $this->generateMultiPagePDF(3));
-        
+
         // Test split
         $splitDocs = $this->pdfService->split($document, $this->user->id);
-        
+
         $this->assertIsArray($splitDocs);
         $this->assertCount(3, $splitDocs);
-        
+
         foreach ($splitDocs as $index => $splitDoc) {
             $this->assertInstanceOf(Document::class, $splitDoc);
             $this->assertEquals('split', $splitDoc->metadata['type']);
@@ -99,12 +98,12 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($document->stored_name, $this->generatePDFContent());
-        
+
         // Test rotation
         $rotatedDoc = $this->pdfService->rotate($document, 90, $this->user->id);
-        
+
         $this->assertInstanceOf(Document::class, $rotatedDoc);
         $this->assertEquals('rotated', $rotatedDoc->metadata['type']);
         $this->assertEquals(90, $rotatedDoc->metadata['rotation']);
@@ -118,12 +117,12 @@ class PDFServiceTest extends TestCase
             'extension' => 'pdf',
             'size' => 5000000, // 5MB
         ]);
-        
+
         Storage::put($document->stored_name, $this->generateLargePDF());
-        
+
         // Test compression
         $compressedDoc = $this->pdfService->compress($document, $this->user->id, 'medium');
-        
+
         $this->assertInstanceOf(Document::class, $compressedDoc);
         $this->assertEquals('compressed', $compressedDoc->metadata['type']);
         $this->assertEquals('medium', $compressedDoc->metadata['compression_level']);
@@ -137,9 +136,9 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($document->stored_name, $this->generatePDFContent());
-        
+
         // Test watermark
         $watermarkedDoc = $this->pdfService->addWatermark(
             $document,
@@ -151,7 +150,7 @@ class PDFServiceTest extends TestCase
                 'rotation' => 45,
             ]
         );
-        
+
         $this->assertInstanceOf(Document::class, $watermarkedDoc);
         $this->assertEquals('watermarked', $watermarkedDoc->metadata['type']);
         $this->assertEquals('CONFIDENTIAL', $watermarkedDoc->metadata['watermark_text']);
@@ -164,9 +163,9 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($document->stored_name, $this->generatePDFContent());
-        
+
         // Test encryption
         $encryptedDoc = $this->pdfService->encrypt(
             $document,
@@ -175,7 +174,7 @@ class PDFServiceTest extends TestCase
             $this->user->id,
             ['print' => false, 'copy' => false]
         );
-        
+
         $this->assertInstanceOf(Document::class, $encryptedDoc);
         $this->assertEquals('encrypted', $encryptedDoc->metadata['type']);
         $this->assertTrue($encryptedDoc->metadata['is_encrypted']);
@@ -189,12 +188,12 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($document->stored_name, $this->generateMultiPagePDF(5));
-        
+
         // Test page extraction
         $extractedDoc = $this->pdfService->extractPages($document, [2, 3, 4], $this->user->id);
-        
+
         $this->assertInstanceOf(Document::class, $extractedDoc);
         $this->assertEquals('extracted', $extractedDoc->metadata['type']);
         $this->assertEquals([2, 3, 4], $extractedDoc->metadata['extracted_pages']);
@@ -208,11 +207,11 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($document->stored_name, $this->generateMultiPagePDF(7));
-        
+
         $pageCount = $this->pdfService->getPageCount($document);
-        
+
         $this->assertEquals(7, $pageCount);
     }
 
@@ -223,11 +222,11 @@ class PDFServiceTest extends TestCase
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($document->stored_name, 'Invalid PDF content');
-        
+
         $this->expectException(\Exception::class);
-        
+
         $this->pdfService->split($document, $this->user->id);
     }
 
@@ -237,31 +236,31 @@ class PDFServiceTest extends TestCase
         $pdfService = Mockery::mock(PDFService::class)->makePartial();
         $pdfService->shouldReceive('isQpdfAvailable')->andReturn(false);
         $pdfService->shouldReceive('isPdftkAvailable')->andReturn(false);
-        
+
         $document = Document::factory()->create([
             'tenant_id' => $this->tenant->id,
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($document->stored_name, $this->generatePDFContent());
-        
+
         // Should fall back to Python method
         $doc2 = Document::factory()->create([
             'tenant_id' => $this->tenant->id,
             'user_id' => $this->user->id,
             'extension' => 'pdf',
         ]);
-        
+
         Storage::put($doc2->stored_name, $this->generatePDFContent());
-        
+
         $mergedDoc = $pdfService->merge(
             [$document, $doc2],
             'merged.pdf',
             $this->user->id,
             $this->tenant->id
         );
-        
+
         $this->assertInstanceOf(Document::class, $mergedDoc);
     }
 
@@ -271,6 +270,7 @@ class PDFServiceTest extends TestCase
         $pdf = new \TCPDF();
         $pdf->AddPage();
         $pdf->Write(0, $text);
+
         return $pdf->Output('', 'S');
     }
 
@@ -281,6 +281,7 @@ class PDFServiceTest extends TestCase
             $pdf->AddPage();
             $pdf->Write(0, "Page $i");
         }
+
         return $pdf->Output('', 'S');
     }
 
@@ -295,6 +296,7 @@ class PDFServiceTest extends TestCase
                 $pdf->Ln();
             }
         }
+
         return $pdf->Output('', 'S');
     }
 }

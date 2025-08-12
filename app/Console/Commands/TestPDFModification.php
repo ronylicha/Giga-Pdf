@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Services\HTMLPDFEditor;
 use App\Services\PDFContentService;
+use Illuminate\Console\Command;
 
 class TestPDFModification extends Command
 {
@@ -14,11 +14,11 @@ class TestPDFModification extends Command
     public function handle()
     {
         $pdfPath = $this->argument('pdf') ?: storage_path('app/private/test.pdf');
-        
-        if (!file_exists($pdfPath)) {
+
+        if (! file_exists($pdfPath)) {
             $this->error("PDF not found: $pdfPath");
             $this->info("Creating test PDF...");
-            
+
             // Create test PDF
             $pdf = new \TCPDF();
             $pdf->AddPage();
@@ -32,12 +32,12 @@ class TestPDFModification extends Command
             $pdf->Output($pdfPath, 'F');
             $this->info("✓ Test PDF created");
         }
-        
+
         // Extract text
         $this->info("\nExtracting text...");
         $contentService = new PDFContentService();
         $elements = $contentService->extractTextWithPositions($pdfPath);
-        
+
         foreach ($elements as $i => $element) {
             $this->line(sprintf(
                 "[%d] '%s' at (%d,%d)",
@@ -47,23 +47,25 @@ class TestPDFModification extends Command
                 $element['y'] ?? 0
             ));
         }
-        
+
         // Find text to replace
         $target = null;
         foreach ($elements as $element) {
             if (strpos($element['text'], 'will be replaced') !== false) {
                 $target = $element;
+
                 break;
             }
         }
-        
-        if (!$target) {
+
+        if (! $target) {
             $this->error("Target text not found");
+
             return 1;
         }
-        
+
         $this->info("\nReplacing: '" . $target['text'] . "'");
-        
+
         // Modify
         $modifications = [[
             'type' => 'replace',
@@ -72,36 +74,37 @@ class TestPDFModification extends Command
             'y' => $target['y'] ?? 0,
             'oldText' => $target['text'],
             'newText' => 'TEXT REPLACED SUCCESSFULLY',
-            'color' => '#FF0000'
+            'color' => '#FF0000',
         ]];
-        
+
         $this->info("\nModifying PDF...");
         $htmlEditor = new HTMLPDFEditor();
         $modifiedPath = $htmlEditor->editViaHTML($pdfPath, $modifications);
-        
+
         $outputPath = storage_path('app/private/test_modified.pdf');
         copy($modifiedPath, $outputPath);
         @unlink($modifiedPath);
-        
+
         $this->info("✓ Modified PDF saved to: $outputPath");
-        
+
         // Verify
         $this->info("\nVerifying modification...");
         $newElements = $contentService->extractTextWithPositions($outputPath);
-        
+
         $found = false;
         foreach ($newElements as $element) {
             if (strpos($element['text'], 'REPLACED') !== false) {
                 $found = true;
                 $this->info("✓ Success! Found: '" . $element['text'] . "'");
+
                 break;
             }
         }
-        
-        if (!$found) {
+
+        if (! $found) {
             $this->warn("⚠ Warning: Replacement text not found");
         }
-        
+
         return 0;
     }
 }

@@ -13,7 +13,7 @@ class StorageQuotaExceededException extends Exception
     {
         parent::__construct($message, $code, $previous);
     }
-    
+
     /**
      * Report the exception.
      */
@@ -26,7 +26,7 @@ class StorageQuotaExceededException extends Exception
             'message' => $this->getMessage(),
         ]);
     }
-    
+
     /**
      * Render the exception as an HTTP response.
      */
@@ -38,7 +38,7 @@ class StorageQuotaExceededException extends Exception
                 'message' => $this->getMessage(),
             ], 413); // 413 Payload Too Large
         }
-        
+
         return redirect()->back()
             ->with('error', $this->getMessage())
             ->withInput();

@@ -12,14 +12,16 @@ use Illuminate\Queue\SerializesModels;
 
 class UserInvitation extends Mailable implements ShouldQueue
 {
-    use Queueable, SerializesModels;
+    use Queueable;
+    use SerializesModels;
 
     /**
      * Create a new message instance.
      */
     public function __construct(
         public Invitation $invitation
-    ) {}
+    ) {
+    }
 
     /**
      * Get the message envelope.

@@ -5,20 +5,23 @@ namespace App\Jobs;
 use App\Models\Conversion;
 use App\Models\Document;
 use App\Services\ConversionService;
+use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
-use Exception;
 
 class ProcessConversion implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     protected $conversion;
-    
+
     /**
      * Create a new job instance.
      */
@@ -38,11 +41,11 @@ class ProcessConversion implements ShouldQueue
                 'status' => 'processing',
                 'started_at' => now(),
             ]);
-            
+
             // Get source document
             $sourceDocument = $this->conversion->document;
             $sourcePath = Storage::path($sourceDocument->stored_name);
-            
+
             // Perform conversion
             $outputPath = $conversionService->convert(
                 $sourcePath,
@@ -50,11 +53,11 @@ class ProcessConversion implements ShouldQueue
                 $this->conversion->to_format,
                 $this->conversion->options ?? []
             );
-            
+
             // Move converted file to proper location first
             $storedName = 'conversions/' . $this->conversion->tenant_id . '/' . basename($outputPath);
             Storage::put($storedName, file_get_contents($outputPath));
-            
+
             // Create result document
             $resultDocument = Document::create([
                 'tenant_id' => $this->conversion->tenant_id,
@@ -72,9 +75,9 @@ class ProcessConversion implements ShouldQueue
                     'converted_at' => now()->toIso8601String(),
                 ],
             ]);
-            
+
             unlink($outputPath); // Remove temp file
-            
+
             // Update conversion record
             $this->conversion->update([
                 'status' => 'completed',
@@ -82,18 +85,18 @@ class ProcessConversion implements ShouldQueue
                 'completed_at' => now(),
                 'progress' => 100,
             ]);
-            
+
         } catch (Exception $e) {
             $this->conversion->update([
                 'status' => 'failed',
                 'error_message' => $e->getMessage(),
                 'completed_at' => now(),
             ]);
-            
+
             throw $e;
         }
     }
-    
+
     /**
      * Get MIME type for format
      */

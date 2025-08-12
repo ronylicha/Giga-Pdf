@@ -27,7 +27,7 @@ class TenantPolicy
         if ($user->tenant_id === $tenant->id) {
             return true;
         }
-        
+
         // Super admin can view all tenants
         return $user->isSuperAdmin();
     }
@@ -49,7 +49,7 @@ class TenantPolicy
         if ($user->tenant_id === $tenant->id && $user->isTenantAdmin()) {
             return true;
         }
-        
+
         // Super admin can update all tenants
         return $user->isSuperAdmin();
     }
@@ -103,7 +103,7 @@ class TenantPolicy
         if ($user->tenant_id !== $tenant->id) {
             return false;
         }
-        
+
         return $user->hasPermissionTo('manage tenant settings') || $user->isTenantAdmin();
     }
 
@@ -116,7 +116,7 @@ class TenantPolicy
         if ($user->tenant_id !== $tenant->id) {
             return false;
         }
-        
+
         return $user->hasPermissionTo('view tenant statistics') || $user->isTenantAdmin();
     }
 }

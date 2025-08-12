@@ -4,12 +4,12 @@ namespace App\Services;
 
 use App\Exceptions\ConversionFailedException;
 use App\Exceptions\InvalidDocumentException;
-use App\Models\Document;
 use App\Models\Conversion;
+use App\Models\Document;
+use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Exception;
 
 class ConversionService
 {
@@ -20,46 +20,46 @@ class ConversionService
     public function convert(string $inputPath, string $fromFormat, string $toFormat, array $options = []): string
     {
         $outputDir = sys_get_temp_dir() . '/giga_pdf_conversions';
-        if (!is_dir($outputDir)) {
+        if (! is_dir($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
-        
+
         $outputPath = $outputDir . '/' . uniqid() . '.' . $toFormat;
-        
+
         try {
             Log::info('Starting conversion', [
                 'from' => $fromFormat,
                 'to' => $toFormat,
-                'input' => $inputPath
+                'input' => $inputPath,
             ]);
-            
+
             // Use LibreOffice for all conversions
             $this->convertWithLibreOffice($inputPath, $outputPath, $fromFormat, $toFormat, $options);
-            
-            if (!file_exists($outputPath) || filesize($outputPath) === 0) {
+
+            if (! file_exists($outputPath) || filesize($outputPath) === 0) {
                 throw new ConversionFailedException("La conversion a échoué - fichier de sortie vide ou inexistant");
             }
-            
+
             Log::info('Conversion successful', [
                 'output' => $outputPath,
-                'size' => filesize($outputPath)
+                'size' => filesize($outputPath),
             ]);
-            
+
             return $outputPath;
-            
+
         } catch (Exception $e) {
             Log::error('Conversion failed', [
                 'input' => $inputPath,
                 'output' => $outputPath,
                 'from' => $fromFormat,
                 'to' => $toFormat,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             throw new ConversionFailedException("Conversion échouée: " . $e->getMessage(), 0, $e);
         }
     }
-    
+
     /**
      * Convert using LibreOffice with proper filters for format preservation
      */
@@ -67,50 +67,50 @@ class ConversionService
     {
         $tempDir = sys_get_temp_dir() . '/libreoffice_' . uniqid();
         mkdir($tempDir, 0755, true);
-        
+
         try {
             // Determine the appropriate filter for the conversion
             $filter = $this->getLibreOfficeFilter($fromFormat, $toFormat);
-            
+
             // Build the LibreOffice command
             $command = $this->buildLibreOfficeCommand($inputPath, $tempDir, $toFormat, $filter);
-            
+
             Log::info('Executing LibreOffice command', [
-                'command' => $command
+                'command' => $command,
             ]);
-            
+
             exec($command, $output, $returnCode);
-            
+
             if ($returnCode !== 0) {
                 throw new ConversionFailedException(
                     "LibreOffice conversion failed. Output: " . implode("\n", $output)
                 );
             }
-            
+
             // Find the converted file
             $convertedFile = $this->findConvertedFile($tempDir, $inputPath, $toFormat);
-            
-            if (!$convertedFile) {
+
+            if (! $convertedFile) {
                 throw new ConversionFailedException("Fichier converti non trouvé dans le répertoire temporaire");
             }
-            
+
             // Move to final location
-            if (!rename($convertedFile, $outputPath)) {
+            if (! rename($convertedFile, $outputPath)) {
                 throw new ConversionFailedException("Impossible de déplacer le fichier converti");
             }
-            
+
         } finally {
             $this->cleanupDirectory($tempDir);
         }
     }
-    
+
     /**
      * Build LibreOffice command with appropriate parameters
      */
     protected function buildLibreOfficeCommand(string $inputPath, string $outputDir, string $toFormat, ?array $filter): string
     {
         $baseCommand = 'libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore';
-        
+
         if ($filter) {
             return sprintf(
                 '%s --infilter="%s" --convert-to %s --outdir %s %s 2>&1',
@@ -130,7 +130,7 @@ class ConversionService
             );
         }
     }
-    
+
     /**
      * Get the appropriate LibreOffice filter for conversion
      */
@@ -140,117 +140,117 @@ class ConversionService
             // PDF imports with format preservation
             'pdf_to_docx' => [
                 'input' => 'writer_pdf_import',
-                'output' => 'MS Word 2007 XML'
+                'output' => 'MS Word 2007 XML',
             ],
             'pdf_to_doc' => [
                 'input' => 'writer_pdf_import',
-                'output' => 'MS Word 97'
+                'output' => 'MS Word 97',
             ],
             'pdf_to_xlsx' => [
                 'input' => 'calc_pdf_import',
-                'output' => 'Calc MS Excel 2007 XML'
+                'output' => 'Calc MS Excel 2007 XML',
             ],
             'pdf_to_xls' => [
                 'input' => 'calc_pdf_import',
-                'output' => 'MS Excel 97'
+                'output' => 'MS Excel 97',
             ],
             'pdf_to_pptx' => [
                 'input' => 'impress_pdf_import',
-                'output' => 'Impress MS PowerPoint 2007 XML'
+                'output' => 'Impress MS PowerPoint 2007 XML',
             ],
             'pdf_to_ppt' => [
                 'input' => 'impress_pdf_import',
-                'output' => 'MS PowerPoint 97'
+                'output' => 'MS PowerPoint 97',
             ],
             'pdf_to_odt' => [
                 'input' => 'writer_pdf_import',
-                'output' => 'writer8'
+                'output' => 'writer8',
             ],
             'pdf_to_ods' => [
                 'input' => 'calc_pdf_import',
-                'output' => 'calc8'
+                'output' => 'calc8',
             ],
             'pdf_to_odp' => [
                 'input' => 'impress_pdf_import',
-                'output' => 'impress8'
+                'output' => 'impress8',
             ],
-            
+
             // HTML conversions
             'html_to_pdf' => [
                 'input' => 'HTML',
-                'output' => 'writer_pdf_Export'
+                'output' => 'writer_pdf_Export',
             ],
             'pdf_to_html' => [
                 'input' => 'writer_pdf_import',
-                'output' => 'HTML'
+                'output' => 'HTML',
             ],
-            
+
             // Text conversions
             'txt_to_pdf' => [
                 'input' => 'Text',
-                'output' => 'writer_pdf_Export'
+                'output' => 'writer_pdf_Export',
             ],
             'pdf_to_txt' => [
                 'input' => 'writer_pdf_import',
-                'output' => 'Text'
+                'output' => 'Text',
             ],
-            
+
             // Image to PDF
             'jpg_to_pdf' => [
                 'input' => null,
-                'output' => 'writer_pdf_Export'
+                'output' => 'writer_pdf_Export',
             ],
             'png_to_pdf' => [
                 'input' => null,
-                'output' => 'writer_pdf_Export'
+                'output' => 'writer_pdf_Export',
             ],
-            
+
             // Office format conversions
             'docx_to_pdf' => [
                 'input' => null,
-                'output' => 'writer_pdf_Export'
+                'output' => 'writer_pdf_Export',
             ],
             'xlsx_to_pdf' => [
                 'input' => null,
-                'output' => 'calc_pdf_Export'
+                'output' => 'calc_pdf_Export',
             ],
             'pptx_to_pdf' => [
                 'input' => null,
-                'output' => 'impress_pdf_Export'
+                'output' => 'impress_pdf_Export',
             ],
-            
+
             // Inter-office conversions
             'docx_to_odt' => [
                 'input' => null,
-                'output' => 'writer8'
+                'output' => 'writer8',
             ],
             'xlsx_to_ods' => [
                 'input' => null,
-                'output' => 'calc8'
+                'output' => 'calc8',
             ],
             'pptx_to_odp' => [
                 'input' => null,
-                'output' => 'impress8'
+                'output' => 'impress8',
             ],
             'odt_to_docx' => [
                 'input' => null,
-                'output' => 'MS Word 2007 XML'
+                'output' => 'MS Word 2007 XML',
             ],
             'ods_to_xlsx' => [
                 'input' => null,
-                'output' => 'Calc MS Excel 2007 XML'
+                'output' => 'Calc MS Excel 2007 XML',
             ],
             'odp_to_pptx' => [
                 'input' => null,
-                'output' => 'Impress MS PowerPoint 2007 XML'
-            ]
+                'output' => 'Impress MS PowerPoint 2007 XML',
+            ],
         ];
-        
+
         $key = $fromFormat . '_to_' . $toFormat;
-        
+
         return $filters[$key] ?? null;
     }
-    
+
     /**
      * Find the converted file in the temporary directory
      */
@@ -258,20 +258,20 @@ class ConversionService
     {
         $baseName = pathinfo($inputPath, PATHINFO_FILENAME);
         $expectedFile = $tempDir . '/' . $baseName . '.' . $toFormat;
-        
+
         if (file_exists($expectedFile)) {
             return $expectedFile;
         }
-        
+
         // Search for any file with the target extension
         $files = glob($tempDir . '/*.' . $toFormat);
-        if (!empty($files)) {
+        if (! empty($files)) {
             return $files[0];
         }
-        
+
         return null;
     }
-    
+
     /**
      * Clean up temporary directory
      */
@@ -287,7 +287,7 @@ class ConversionService
             @rmdir($dir);
         }
     }
-    
+
     /**
      * Convert document to PDF (high-level method for models)
      */
@@ -295,17 +295,17 @@ class ConversionService
     {
         $inputPath = Storage::path($document->stored_name);
         $outputPath = sys_get_temp_dir() . '/' . uniqid() . '.pdf';
-        
+
         try {
             // Get format from mime type
             $fromFormat = $this->getFormatFromMimeType($document->mime_type);
-            
+
             // Perform conversion
             $this->convert($inputPath, $fromFormat, 'pdf', $options);
-            
+
             // Extract metadata
             $metadata = $this->extractPDFMetadata($outputPath);
-            
+
             // Create new document
             $pdfDocument = Document::create([
                 'tenant_id' => $document->tenant_id,
@@ -319,23 +319,23 @@ class ConversionService
                 'parent_id' => $document->id,
                 'page_count' => $metadata['pages'] ?? null,
             ]);
-            
+
             // Move to permanent storage
             $directory = 'documents/' . $pdfDocument->tenant_id . '/' . date('Y/m');
             $filename = Str::uuid() . '.pdf';
             $storedPath = $directory . '/' . $filename;
-            
+
             Storage::put($storedPath, file_get_contents($outputPath));
             $pdfDocument->update(['stored_name' => $storedPath]);
-            
+
             return $pdfDocument;
-            
+
         } catch (Exception $e) {
             Log::error('PDF conversion failed', [
                 'document_id' => $document->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             throw new ConversionFailedException(
                 "Failed to convert document to PDF: " . $e->getMessage(),
                 0,
@@ -347,7 +347,7 @@ class ConversionService
             }
         }
     }
-    
+
     /**
      * Convert PDF to another format (high-level method for models)
      */
@@ -356,17 +356,17 @@ class ConversionService
         if ($document->mime_type !== 'application/pdf') {
             throw new InvalidDocumentException("Document is not a PDF");
         }
-        
+
         $inputPath = Storage::path($document->stored_name);
         $outputPath = sys_get_temp_dir() . '/' . uniqid() . '.' . $targetFormat;
-        
+
         try {
             // Perform conversion
             $this->convert($inputPath, 'pdf', $targetFormat, $options);
-            
+
             // Get mime type for target format
             $mimeType = $this->getMimeTypeForFormat($targetFormat);
-            
+
             // Create new document
             $convertedDocument = Document::create([
                 'tenant_id' => $document->tenant_id,
@@ -378,24 +378,24 @@ class ConversionService
                 'hash' => hash_file('sha256', $outputPath),
                 'parent_id' => $document->id,
             ]);
-            
+
             // Move to permanent storage
             $directory = 'documents/' . $convertedDocument->tenant_id . '/' . date('Y/m');
             $filename = Str::uuid() . '.' . $targetFormat;
             $storedPath = $directory . '/' . $filename;
-            
+
             Storage::put($storedPath, file_get_contents($outputPath));
             $convertedDocument->update(['stored_name' => $storedPath]);
-            
+
             return $convertedDocument;
-            
+
         } catch (Exception $e) {
             Log::error('Conversion from PDF failed', [
                 'document_id' => $document->id,
                 'target_format' => $targetFormat,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             throw $e;
         } finally {
             if (isset($outputPath) && file_exists($outputPath)) {
@@ -403,39 +403,39 @@ class ConversionService
             }
         }
     }
-    
+
     /**
      * Extract PDF metadata using pdfinfo
      */
     protected function extractPDFMetadata(string $pdfPath): array
     {
         $metadata = [];
-        
+
         try {
             $command = sprintf('pdfinfo %s 2>&1', escapeshellarg($pdfPath));
             exec($command, $output);
-            
+
             foreach ($output as $line) {
                 if (preg_match('/^([^:]+):\s+(.*)$/', $line, $matches)) {
                     $key = str_replace(' ', '_', strtolower($matches[1]));
                     $metadata[$key] = trim($matches[2]);
                 }
             }
-            
+
             if (isset($metadata['pages'])) {
                 $metadata['pages'] = (int) $metadata['pages'];
             }
-            
+
         } catch (Exception $e) {
             Log::warning('Failed to extract PDF metadata', [
                 'file' => $pdfPath,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
-        
+
         return $metadata;
     }
-    
+
     /**
      * Get format from mime type
      */
@@ -468,10 +468,10 @@ class ConversionService
             'application/xml' => 'xml',
             'text/xml' => 'xml',
         ];
-        
+
         return $map[$mimeType] ?? 'unknown';
     }
-    
+
     /**
      * Get mime type for format
      */
@@ -503,10 +503,10 @@ class ConversionService
             'json' => 'application/json',
             'xml' => 'application/xml',
         ];
-        
+
         return $map[$format] ?? 'application/octet-stream';
     }
-    
+
     /**
      * Check if conversion is supported
      */
@@ -516,12 +516,12 @@ class ConversionService
         $supportedFormats = [
             'pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt',
             'odt', 'ods', 'odp', 'rtf', 'html', 'txt', 'csv',
-            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp'
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp',
         ];
-        
+
         return in_array($fromFormat, $supportedFormats) && in_array($toFormat, $supportedFormats);
     }
-    
+
     /**
      * Get supported output formats for a given input format
      */
@@ -534,7 +534,7 @@ class ConversionService
             'image' => ['pdf', 'jpg', 'png', 'gif', 'bmp', 'tiff', 'webp'],
             'web' => ['pdf', 'docx', 'odt', 'txt'],
         ];
-        
+
         $inputGroups = [
             'pdf' => array_merge($formatGroups['document'], $formatGroups['spreadsheet'], $formatGroups['presentation'], $formatGroups['image']),
             'docx' => $formatGroups['document'],
@@ -558,9 +558,9 @@ class ConversionService
             'html' => $formatGroups['web'],
             'txt' => ['pdf', 'docx', 'odt', 'html'],
         ];
-        
+
         $formats = $inputGroups[$inputFormat] ?? ['pdf'];
-        
+
         // Remove the input format from output formats
         return array_values(array_diff($formats, [$inputFormat]));
     }

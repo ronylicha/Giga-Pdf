@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Document;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class PDFToolsController extends Controller
@@ -18,7 +17,7 @@ class PDFToolsController extends Controller
 
         return Inertia::render('Tools/Merge', [
             'title' => 'Fusionner PDF',
-            'documents' => $documents
+            'documents' => $documents,
         ]);
     }
 
@@ -32,35 +31,35 @@ class PDFToolsController extends Controller
 
         return Inertia::render('Tools/Split', [
             'title' => 'Diviser PDF',
-            'documents' => $documents
+            'documents' => $documents,
         ]);
     }
 
     public function rotate()
     {
         return Inertia::render('Tools/Rotate', [
-            'title' => 'Rotation PDF'
+            'title' => 'Rotation PDF',
         ]);
     }
 
     public function compress()
     {
         return Inertia::render('Tools/Compress', [
-            'title' => 'Compresser PDF'
+            'title' => 'Compresser PDF',
         ]);
     }
 
     public function watermark()
     {
         return Inertia::render('Tools/Watermark', [
-            'title' => 'Filigrane PDF'
+            'title' => 'Filigrane PDF',
         ]);
     }
 
     public function encrypt()
     {
         return Inertia::render('Tools/Encrypt', [
-            'title' => 'Chiffrer PDF'
+            'title' => 'Chiffrer PDF',
         ]);
     }
 
@@ -74,21 +73,21 @@ class PDFToolsController extends Controller
 
         return Inertia::render('Tools/Decrypt', [
             'title' => 'Déverrouiller PDF',
-            'documents' => $documents
+            'documents' => $documents,
         ]);
     }
 
     public function ocr()
     {
         return Inertia::render('Tools/OCR', [
-            'title' => 'OCR (Reconnaissance de texte)'
+            'title' => 'OCR (Reconnaissance de texte)',
         ]);
     }
 
     public function extract()
     {
         return Inertia::render('Tools/Extract', [
-            'title' => 'Extraire Pages PDF'
+            'title' => 'Extraire Pages PDF',
         ]);
     }
 }

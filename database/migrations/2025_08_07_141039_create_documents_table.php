@@ -2,11 +2,10 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class () extends Migration {
     /**
      * Run the migrations.
      */
@@ -33,7 +32,7 @@ return new class extends Migration
             $table->integer('access_count')->default(0);
             $table->timestamps();
             $table->softDeletes();
-            
+
             $table->index(['tenant_id', 'user_id']);
             $table->index(['tenant_id', 'created_at']);
             $table->index('mime_type');
@@ -41,13 +40,13 @@ return new class extends Migration
             $table->index('parent_id');
             $table->index('status');
             $table->index(['tenant_id', 'is_public']);
-            
+
             // Optimisation MariaDB
             $table->engine = 'InnoDB';
             $table->charset = 'utf8mb4';
             $table->collation = 'utf8mb4_unicode_ci';
         });
-        
+
         // Ajouter l'index full-text après la création de la table
         DB::statement('ALTER TABLE documents ADD FULLTEXT ft_search (original_name, search_content)');
     }

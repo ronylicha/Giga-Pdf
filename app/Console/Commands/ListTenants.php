@@ -42,6 +42,7 @@ class ListTenants extends Command
 
         if ($tenants->isEmpty()) {
             $this->warn('No tenants found.');
+
             return Command::SUCCESS;
         }
 
@@ -69,18 +70,20 @@ class ListTenants extends Command
         switch ($this->option('format')) {
             case 'json':
                 $this->line($data->toJson(JSON_PRETTY_PRINT));
+
                 break;
-                
+
             case 'csv':
                 $this->outputCsv($data);
+
                 break;
-                
+
             default:
                 $this->table(
                     ['ID', 'Name', 'Slug', 'Domain', 'Users', 'Documents', 'Storage', 'Plan', 'Status', 'Created'],
                     $data->toArray()
                 );
-                
+
                 // Show summary
                 $this->newLine();
                 $this->info('Summary:');
@@ -105,19 +108,19 @@ class ListTenants extends Command
         if ($tenant->is_suspended) {
             return '<fg=red>Suspended</>';
         }
-        
-        if (!$tenant->is_active) {
+
+        if (! $tenant->is_active) {
             return '<fg=yellow>Inactive</>';
         }
-        
+
         if ($tenant->subscription_expires_at && $tenant->subscription_expires_at->isPast()) {
             return '<fg=yellow>Expired</>';
         }
-        
+
         if ($tenant->isStorageQuotaExceeded()) {
             return '<fg=yellow>Over Quota</>';
         }
-        
+
         return '<fg=green>Active</>';
     }
 
@@ -127,13 +130,13 @@ class ListTenants extends Command
     private function formatBytes($bytes, $precision = 2): string
     {
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        
+
         $bytes = max($bytes, 0);
         $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
-        
+
         $bytes /= pow(1024, $pow);
-        
+
         return round($bytes, $precision) . $units[$pow];
     }
 
@@ -144,7 +147,7 @@ class ListTenants extends Command
     {
         // Headers
         $this->line('ID,Name,Slug,Domain,Users,Documents,Storage,Plan,Status,Created');
-        
+
         // Data rows
         foreach ($data as $row) {
             $values = array_map(function ($value) {
@@ -154,9 +157,10 @@ class ListTenants extends Command
                 if (str_contains($value, ',') || str_contains($value, '"')) {
                     return '"' . str_replace('"', '""', $value) . '"';
                 }
+
                 return $value;
             }, $row);
-            
+
             $this->line(implode(',', $values));
         }
     }

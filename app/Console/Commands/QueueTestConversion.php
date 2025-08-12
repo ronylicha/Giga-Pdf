@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Document;
-use App\Models\Conversion;
 use App\Jobs\ProcessConversion;
+use App\Models\Conversion;
+use App\Models\Document;
 use Illuminate\Console\Command;
 
 class QueueTestConversion extends Command
@@ -30,13 +30,13 @@ class QueueTestConversion extends Command
     {
         $documentId = $this->argument('document_id');
         $format = $this->argument('format');
-        
+
         $this->info("Creating conversion job for document {$documentId} to {$format}");
-        
+
         try {
             $document = Document::findOrFail($documentId);
             $this->info("Found document: " . $document->original_name);
-            
+
             // Create conversion record
             $conversion = Conversion::create([
                 'tenant_id' => $document->tenant_id,
@@ -47,19 +47,20 @@ class QueueTestConversion extends Command
                 'status' => 'pending',
                 'options' => [],
             ]);
-            
+
             $this->info("Created conversion record with ID: " . $conversion->id);
-            
+
             // Dispatch the job
             ProcessConversion::dispatch($conversion);
-            
+
             $this->info("Conversion job dispatched to queue!");
             $this->info("Monitor the conversion with: php artisan tinker --execute=\"App\\Models\\Conversion::find({$conversion->id})\"");
-            
+
             return 0;
-            
+
         } catch (\Exception $e) {
             $this->error("Failed to create conversion job: " . $e->getMessage());
+
             return 1;
         }
     }

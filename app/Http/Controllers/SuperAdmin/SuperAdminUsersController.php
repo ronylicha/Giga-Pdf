@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
+use Spatie\Permission\Models\Role;
 
 class SuperAdminUsersController extends Controller
 {
@@ -67,13 +67,13 @@ class SuperAdminUsersController extends Controller
             } else {
                 app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
             }
-            
+
             // Get roles with correct team context
             $userRoles = $user->roles ? $user->roles->pluck('name')->toArray() : [];
-            
+
             // Reset team context
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
-            
+
             return [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -90,7 +90,7 @@ class SuperAdminUsersController extends Controller
                 'email_verified_at' => $user->email_verified_at,
                 'created_at' => $user->created_at,
                 'last_login_at' => $user->last_login_at,
-                'is_2fa_enabled' => !empty($user->two_factor_secret),
+                'is_2fa_enabled' => ! empty($user->two_factor_secret),
             ];
         });
 
@@ -128,7 +128,7 @@ class SuperAdminUsersController extends Controller
     public function show(User $user)
     {
         $user->load(['tenant', 'permissions']);
-        
+
         // Set team context to get correct roles
         if ($user->tenant_id) {
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($user->tenant_id);
@@ -165,7 +165,7 @@ class SuperAdminUsersController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'tenant' => $user->tenant,
-                'roles' => $user->roles->map(function($role) {
+                'roles' => $user->roles->map(function ($role) {
                     return [
                         'id' => $role->id,
                         'name' => $role->name,
@@ -177,14 +177,14 @@ class SuperAdminUsersController extends Controller
                 'created_at' => $user->created_at,
                 'updated_at' => $user->updated_at,
                 'last_login_at' => $user->last_login_at,
-                'is_2fa_enabled' => !empty($user->two_factor_secret),
+                'is_2fa_enabled' => ! empty($user->two_factor_secret),
                 'documents_count' => $documentsCount,
                 'conversions_count' => $conversionsCount,
                 'storage_usage' => $storageUsage,
             ],
             'activities' => $activities,
         ]);
-        
+
         // Reset team context
         app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
     }
@@ -195,12 +195,12 @@ class SuperAdminUsersController extends Controller
     public function create()
     {
         $tenants = Tenant::orderBy('name')->get(['id', 'name']);
-        
+
         // Get all unique role names
-        $roleNames = Role::distinct()->pluck('name')->map(function($name) {
+        $roleNames = Role::distinct()->pluck('name')->map(function ($name) {
             return [
                 'name' => $name,
-                'display_name' => ucwords(str_replace('-', ' ', $name))
+                'display_name' => ucwords(str_replace('-', ' ', $name)),
             ];
         });
 
@@ -225,6 +225,7 @@ class SuperAdminUsersController extends Controller
         ]);
 
         DB::beginTransaction();
+
         try {
             $user = User::create([
                 'name' => $validated['name'],
@@ -237,18 +238,18 @@ class SuperAdminUsersController extends Controller
             // Set team context and assign role
             if ($user->tenant_id) {
                 app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($user->tenant_id);
-                
+
                 // Get the role for this specific team
                 $role = Role::where('name', $validated['role'])
                            ->where('team_id', $user->tenant_id)
                            ->first();
-                
-                if (!$role) {
+
+                if (! $role) {
                     // Create the role for this team if it doesn't exist
                     $role = Role::create([
                         'name' => $validated['role'],
                         'guard_name' => 'web',
-                        'team_id' => $user->tenant_id
+                        'team_id' => $user->tenant_id,
                     ]);
                 }
             } else {
@@ -258,11 +259,11 @@ class SuperAdminUsersController extends Controller
                            ->whereNull('team_id')
                            ->first();
             }
-            
+
             if ($role) {
                 $user->assignRole($role);
             }
-            
+
             // Reset team context
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
 
@@ -277,6 +278,7 @@ class SuperAdminUsersController extends Controller
                            ->with('success', 'Utilisateur créé avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return back()->with('error', 'Erreur lors de la création de l\'utilisateur: ' . $e->getMessage());
         }
     }
@@ -287,26 +289,26 @@ class SuperAdminUsersController extends Controller
     public function edit(User $user)
     {
         $user->load(['tenant']);
-        
+
         // Set team context to get correct roles
         if ($user->tenant_id) {
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($user->tenant_id);
         } else {
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
         }
-        
+
         $userRoles = $user->roles->pluck('name');
-        
+
         // Reset team context
         app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
-        
+
         $tenants = Tenant::orderBy('name')->get(['id', 'name']);
-        
+
         // Get all unique role names
-        $roleNames = Role::distinct()->pluck('name')->map(function($name) {
+        $roleNames = Role::distinct()->pluck('name')->map(function ($name) {
             return [
                 'name' => $name,
-                'display_name' => ucwords(str_replace('-', ' ', $name))
+                'display_name' => ucwords(str_replace('-', ' ', $name)),
             ];
         });
 
@@ -337,6 +339,7 @@ class SuperAdminUsersController extends Controller
         ]);
 
         DB::beginTransaction();
+
         try {
             $user->update([
                 'name' => $validated['name'],
@@ -344,25 +347,25 @@ class SuperAdminUsersController extends Controller
                 'tenant_id' => $validated['tenant_id'],
             ]);
 
-            if (!empty($validated['password'])) {
+            if (! empty($validated['password'])) {
                 $user->update(['password' => Hash::make($validated['password'])]);
             }
 
             // Update role with correct team context
             if ($user->tenant_id) {
                 app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($user->tenant_id);
-                
+
                 // Get the role for this specific team
                 $role = Role::where('name', $validated['role'])
                            ->where('team_id', $user->tenant_id)
                            ->first();
-                
-                if (!$role) {
+
+                if (! $role) {
                     // Create the role for this team if it doesn't exist
                     $role = Role::create([
                         'name' => $validated['role'],
                         'guard_name' => 'web',
-                        'team_id' => $user->tenant_id
+                        'team_id' => $user->tenant_id,
                     ]);
                 }
             } else {
@@ -372,11 +375,11 @@ class SuperAdminUsersController extends Controller
                            ->whereNull('team_id')
                            ->first();
             }
-            
+
             if ($role) {
                 $user->syncRoles([$role]);
             }
-            
+
             // Reset team context
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
 
@@ -386,6 +389,7 @@ class SuperAdminUsersController extends Controller
                            ->with('success', 'Utilisateur mis à jour avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return back()->with('error', 'Erreur lors de la mise à jour: ' . $e->getMessage());
         }
     }
@@ -413,6 +417,7 @@ class SuperAdminUsersController extends Controller
 
         try {
             $user->delete();
+
             return redirect()->route('super-admin.users.index')
                            ->with('success', 'Utilisateur supprimé avec succès');
         } catch (\Exception $e) {
@@ -432,13 +437,13 @@ class SuperAdminUsersController extends Controller
 
         // Store original user ID before switching
         $impersonatorId = Auth::id();
-        
+
         // Store impersonator ID and start time in session
         session([
             'impersonator_id' => $impersonatorId,
             'impersonation_started_at' => now(),
         ]);
-        
+
         // Log the impersonation BEFORE switching user
         DB::table('impersonation_logs')->insert([
             'impersonator_id' => $impersonatorId,
@@ -454,7 +459,7 @@ class SuperAdminUsersController extends Controller
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        
+
         // Now login as the target user
         Auth::login($user);
 
@@ -467,7 +472,7 @@ class SuperAdminUsersController extends Controller
      */
     public function stopImpersonation(Request $request)
     {
-        if (!session()->has('impersonator_id')) {
+        if (! session()->has('impersonator_id')) {
             return redirect()->route('dashboard');
         }
 
@@ -502,7 +507,7 @@ class SuperAdminUsersController extends Controller
             return redirect()->route('super-admin.dashboard')
                            ->with('success', 'Impersonation terminée');
         }
-        
+
         // Otherwise redirect to regular dashboard
         return redirect()->route('dashboard')
                        ->with('success', 'Impersonation terminée');
@@ -514,7 +519,7 @@ class SuperAdminUsersController extends Controller
     public function resetPassword(User $user)
     {
         $newPassword = \Str::random(12);
-        
+
         $user->update([
             'password' => Hash::make($newPassword),
         ]);

@@ -10,12 +10,12 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class ActivityLog extends Model
 {
     use HasFactory;
-    
+
     /**
      * The table associated with the model.
      */
     protected $table = 'activity_log';
-    
+
     /**
      * The attributes that are mass assignable.
      */
@@ -36,7 +36,7 @@ class ActivityLog extends Model
         'url',
         'response_time',
     ];
-    
+
     /**
      * The attributes that should be cast.
      */
@@ -44,33 +44,33 @@ class ActivityLog extends Model
         'properties' => 'array',
         'response_time' => 'integer',
     ];
-    
+
     /**
      * Default attributes
      */
     protected $attributes = [
         'properties' => '{}',
     ];
-    
+
     /**
      * Boot method
      */
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($log) {
             // Assigner le tenant_id si disponible
-            if (!$log->tenant_id && auth()->check() && auth()->user()->tenant_id) {
+            if (! $log->tenant_id && auth()->check() && auth()->user()->tenant_id) {
                 $log->tenant_id = auth()->user()->tenant_id;
             }
-            
+
             // Assigner le causer si disponible
-            if (!$log->causer_id && auth()->check()) {
+            if (! $log->causer_id && auth()->check()) {
                 $log->causer_type = get_class(auth()->user());
                 $log->causer_id = auth()->id();
             }
-            
+
             // Capturer les informations de la requête
             if (request()) {
                 $log->ip_address = request()->ip();
@@ -80,7 +80,7 @@ class ActivityLog extends Model
             }
         });
     }
-    
+
     /**
      * Get tenant relationship
      */
@@ -88,7 +88,7 @@ class ActivityLog extends Model
     {
         return $this->belongsTo(Tenant::class);
     }
-    
+
     /**
      * Get the subject of the activity.
      */
@@ -96,7 +96,7 @@ class ActivityLog extends Model
     {
         return $this->morphTo();
     }
-    
+
     /**
      * Get the causer of the activity.
      */
@@ -104,7 +104,7 @@ class ActivityLog extends Model
     {
         return $this->morphTo();
     }
-    
+
     /**
      * Get causer name
      */
@@ -114,13 +114,13 @@ class ActivityLog extends Model
             if ($this->causer instanceof User) {
                 return $this->causer->name;
             }
-            
+
             return class_basename($this->causer);
         }
-        
+
         return 'System';
     }
-    
+
     /**
      * Get subject name
      */
@@ -130,37 +130,37 @@ class ActivityLog extends Model
             if (method_exists($this->subject, 'getActivitySubjectName')) {
                 return $this->subject->getActivitySubjectName();
             }
-            
+
             if (property_exists($this->subject, 'name')) {
                 return $this->subject->name;
             }
-            
+
             if (property_exists($this->subject, 'original_name')) {
                 return $this->subject->original_name;
             }
-            
+
             return class_basename($this->subject) . ' #' . $this->subject->id;
         }
-        
+
         return 'N/A';
     }
-    
+
     /**
      * Get formatted description
      */
     public function getFormattedDescription(): string
     {
         $description = $this->description;
-        
+
         // Remplacer les variables dans la description
         if ($this->causer) {
             $description = str_replace(':causer', $this->getCauserName(), $description);
         }
-        
+
         if ($this->subject) {
             $description = str_replace(':subject', $this->getSubjectName(), $description);
         }
-        
+
         // Remplacer les propriétés
         if ($this->properties) {
             foreach ($this->properties as $key => $value) {
@@ -169,10 +169,10 @@ class ActivityLog extends Model
                 }
             }
         }
-        
+
         return $description;
     }
-    
+
     /**
      * Get activity icon
      */
@@ -193,7 +193,7 @@ class ActivityLog extends Model
             default => 'information-circle'
         };
     }
-    
+
     /**
      * Get activity color
      */
@@ -214,7 +214,7 @@ class ActivityLog extends Model
             default => 'gray'
         };
     }
-    
+
     /**
      * Log activity helper
      */
@@ -230,17 +230,17 @@ class ActivityLog extends Model
         $log->description = $description;
         $log->event = $event;
         $log->properties = $properties;
-        
+
         if ($subject) {
             $log->subject_type = get_class($subject);
             $log->subject_id = $subject->id;
         }
-        
+
         $log->save();
-        
+
         return $log;
     }
-    
+
     /**
      * Scope for filtering by log name
      */
@@ -248,7 +248,7 @@ class ActivityLog extends Model
     {
         return $query->where('log_name', $logName);
     }
-    
+
     /**
      * Scope for filtering by event
      */
@@ -256,7 +256,7 @@ class ActivityLog extends Model
     {
         return $query->where('event', $event);
     }
-    
+
     /**
      * Scope for filtering by subject
      */
@@ -265,7 +265,7 @@ class ActivityLog extends Model
         return $query->where('subject_type', get_class($subject))
                      ->where('subject_id', $subject->id);
     }
-    
+
     /**
      * Scope for filtering by causer
      */
@@ -274,7 +274,7 @@ class ActivityLog extends Model
         return $query->where('causer_type', get_class($causer))
                      ->where('causer_id', $causer->id);
     }
-    
+
     /**
      * Scope for recent logs
      */
@@ -282,7 +282,7 @@ class ActivityLog extends Model
     {
         return $query->where('created_at', '>=', now()->subDays($days));
     }
-    
+
     /**
      * Clean old logs
      */

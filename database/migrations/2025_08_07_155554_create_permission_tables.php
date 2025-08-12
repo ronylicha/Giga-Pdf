@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class () extends Migration {
     /**
      * Run the migrations.
      */
@@ -34,7 +33,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('guard_name');
             $table->timestamps();
-            
+
             $table->index($columnNames['team_foreign_key'], 'roles_team_foreign_key_index');
             $table->unique([$columnNames['team_foreign_key'], 'name', 'guard_name']);
         });
@@ -44,7 +43,7 @@ return new class extends Migration
             $table->string('model_type');
             $table->unsignedBigInteger($columnNames['model_morph_key']);
             $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
-            
+
             $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_permissions_model_id_model_type_index');
             $table->index($columnNames['team_foreign_key'], 'model_has_permissions_team_foreign_key_index');
 
@@ -52,7 +51,7 @@ return new class extends Migration
                 ->references('id')
                 ->on($tableNames['permissions'])
                 ->onDelete('cascade');
-                
+
             $table->primary(
                 [$pivotPermission, $columnNames['model_morph_key'], 'model_type'],
                 'model_has_permissions_permission_model_type_primary'
@@ -64,7 +63,7 @@ return new class extends Migration
             $table->string('model_type');
             $table->unsignedBigInteger($columnNames['model_morph_key']);
             $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
-            
+
             $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_roles_model_id_model_type_index');
             $table->index($columnNames['team_foreign_key'], 'model_has_roles_team_foreign_key_index');
 
@@ -72,7 +71,7 @@ return new class extends Migration
                 ->references('id')
                 ->on($tableNames['roles'])
                 ->onDelete('cascade');
-                
+
             $table->primary(
                 [$pivotRole, $columnNames['model_morph_key'], 'model_type'],
                 'model_has_roles_role_model_type_primary'

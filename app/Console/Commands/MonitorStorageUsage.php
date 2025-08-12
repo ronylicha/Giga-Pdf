@@ -2,12 +2,11 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Tenant;
 use App\Models\Document;
+use App\Models\Tenant;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 class MonitorStorageUsage extends Command
 {
@@ -36,24 +35,26 @@ class MonitorStorageUsage extends Command
     public function handle()
     {
         $this->info('Analyzing storage usage...');
-        
+
         // Check for orphaned files first if requested
         if ($this->option('orphans')) {
             $this->handleOrphanedFiles();
+
             return Command::SUCCESS;
         }
 
         // Get tenants to check
         $query = Tenant::query();
-        
+
         if ($tenantId = $this->option('tenant')) {
             $query->where('id', $tenantId)->orWhere('slug', $tenantId);
         }
-        
+
         $tenants = $query->get();
-        
+
         if ($tenants->isEmpty()) {
             $this->warn('No tenants found.');
+
             return Command::SUCCESS;
         }
 
@@ -66,17 +67,17 @@ class MonitorStorageUsage extends Command
 
         foreach ($tenants as $tenant) {
             $bar->setMessage("Checking tenant: {$tenant->name}");
-            
+
             // Calculate database storage
             $dbStorage = $tenant->documents()->sum('size');
-            
+
             // Calculate actual filesystem storage
             $actualStorage = $this->calculateActualStorage($tenant);
-            
+
             // Check for inconsistencies
             $difference = abs($dbStorage - $actualStorage);
             $percentDiff = $dbStorage > 0 ? ($difference / $dbStorage) * 100 : 0;
-            
+
             if ($percentDiff > 5) { // More than 5% difference
                 $inconsistencies[] = [
                     'tenant' => $tenant,
@@ -85,16 +86,16 @@ class MonitorStorageUsage extends Command
                     'difference' => $difference,
                 ];
             }
-            
+
             // Calculate usage percentage
             $maxStorage = $tenant->max_storage_gb * 1024 * 1024 * 1024;
             $usagePercent = $maxStorage > 0 ? ($dbStorage / $maxStorage) * 100 : 0;
-            
+
             // Check if over 90% and needs alert
             if ($usagePercent >= 90 && $this->option('alert')) {
                 $alertTenants[] = $tenant;
             }
-            
+
             $data[] = [
                 'ID' => $tenant->id,
                 'Name' => $tenant->name,
@@ -105,10 +106,10 @@ class MonitorStorageUsage extends Command
                 'Status' => $this->getStorageStatus($usagePercent),
                 'Difference' => $percentDiff > 5 ? $this->formatBytes($difference) . ' ⚠️' : 'OK',
             ];
-            
+
             $bar->advance();
         }
-        
+
         $bar->finish();
         $this->newLine(2);
 
@@ -116,10 +117,10 @@ class MonitorStorageUsage extends Command
         $this->outputResults($data);
 
         // Show inconsistencies
-        if (!empty($inconsistencies)) {
+        if (! empty($inconsistencies)) {
             $this->newLine();
             $this->warn('⚠️  Storage Inconsistencies Detected:');
-            
+
             foreach ($inconsistencies as $inc) {
                 $this->line(sprintf(
                     "  - %s: DB=%s, Actual=%s, Difference=%s",
@@ -129,7 +130,7 @@ class MonitorStorageUsage extends Command
                     $this->formatBytes($inc['difference'])
                 ));
             }
-            
+
             if ($this->option('fix')) {
                 $this->newLine();
                 if ($this->confirm('Do you want to fix these inconsistencies?')) {
@@ -139,7 +140,7 @@ class MonitorStorageUsage extends Command
         }
 
         // Send alerts
-        if (!empty($alertTenants) && $this->option('alert')) {
+        if (! empty($alertTenants) && $this->option('alert')) {
             $this->sendStorageAlerts($alertTenants);
         }
 
@@ -162,7 +163,7 @@ class MonitorStorageUsage extends Command
     private function calculateActualStorage(Tenant $tenant): int
     {
         $totalSize = 0;
-        
+
         // Check documents directory
         $documentsPath = 'documents/' . $tenant->id;
         if (Storage::exists($documentsPath)) {
@@ -171,7 +172,7 @@ class MonitorStorageUsage extends Command
                 $totalSize += Storage::size($file);
             }
         }
-        
+
         // Check conversions directory
         $conversionsPath = 'conversions/' . $tenant->id;
         if (Storage::exists($conversionsPath)) {
@@ -180,7 +181,7 @@ class MonitorStorageUsage extends Command
                 $totalSize += Storage::size($file);
             }
         }
-        
+
         // Check thumbnails directory
         $thumbnailsPath = 'thumbnails/' . $tenant->id;
         if (Storage::exists($thumbnailsPath)) {
@@ -189,7 +190,7 @@ class MonitorStorageUsage extends Command
                 $totalSize += Storage::size($file);
             }
         }
-        
+
         return $totalSize;
     }
 
@@ -199,28 +200,28 @@ class MonitorStorageUsage extends Command
     private function handleOrphanedFiles(): void
     {
         $this->info('Scanning for orphaned files...');
-        
+
         $orphanedFiles = [];
         $totalOrphanedSize = 0;
-        
+
         // Get all document paths from database
         $dbPaths = Document::pluck('stored_name')->toArray();
-        
+
         // Scan storage directories
         $storagePaths = ['documents', 'conversions', 'thumbnails'];
-        
+
         foreach ($storagePaths as $basePath) {
             if (Storage::exists($basePath)) {
                 $files = Storage::allFiles($basePath);
-                
+
                 foreach ($files as $file) {
                     // Skip temp files
                     if (str_contains($file, '/temp/') || str_contains($file, '.tmp')) {
                         continue;
                     }
-                    
+
                     // Check if file exists in database
-                    if (!in_array($file, $dbPaths)) {
+                    if (! in_array($file, $dbPaths)) {
                         $size = Storage::size($file);
                         $orphanedFiles[] = [
                             'path' => $file,
@@ -232,14 +233,15 @@ class MonitorStorageUsage extends Command
                 }
             }
         }
-        
+
         if (empty($orphanedFiles)) {
             $this->info('✅ No orphaned files found.');
+
             return;
         }
-        
+
         $this->warn('Found ' . count($orphanedFiles) . ' orphaned files totaling ' . $this->formatBytes($totalOrphanedSize));
-        
+
         // Show first 10 orphaned files
         $this->table(
             ['File Path', 'Size', 'Last Modified'],
@@ -251,20 +253,20 @@ class MonitorStorageUsage extends Command
                 ];
             }, array_slice($orphanedFiles, 0, 10))
         );
-        
+
         if (count($orphanedFiles) > 10) {
             $this->line('... and ' . (count($orphanedFiles) - 10) . ' more files');
         }
-        
+
         if ($this->confirm('Do you want to delete these orphaned files?')) {
             $bar = $this->output->createProgressBar(count($orphanedFiles));
             $bar->start();
-            
+
             foreach ($orphanedFiles as $file) {
                 Storage::delete($file['path']);
                 $bar->advance();
             }
-            
+
             $bar->finish();
             $this->newLine(2);
             $this->info('✅ Deleted ' . count($orphanedFiles) . ' orphaned files, freed ' . $this->formatBytes($totalOrphanedSize));
@@ -277,14 +279,14 @@ class MonitorStorageUsage extends Command
     private function fixInconsistencies(array $inconsistencies): void
     {
         $this->info('Fixing storage inconsistencies...');
-        
+
         foreach ($inconsistencies as $inc) {
             $tenant = $inc['tenant'];
             $actualStorage = $inc['actual_storage'];
-            
+
             // Recalculate document sizes
             $documents = Document::where('tenant_id', $tenant->id)->get();
-            
+
             foreach ($documents as $document) {
                 if (Storage::exists($document->stored_name)) {
                     $actualSize = Storage::size($document->stored_name);
@@ -295,7 +297,7 @@ class MonitorStorageUsage extends Command
                     }
                 }
             }
-            
+
             $this->info("✅ Fixed storage calculations for tenant: {$tenant->name}");
         }
     }
@@ -306,7 +308,7 @@ class MonitorStorageUsage extends Command
     private function sendStorageAlerts(array $tenants): void
     {
         $this->info('Sending storage alerts for ' . count($tenants) . ' tenants...');
-        
+
         foreach ($tenants as $tenant) {
             // Log the alert
             activity()
@@ -317,10 +319,10 @@ class MonitorStorageUsage extends Command
                     'usage_percent' => $tenant->getStorageUsagePercentage(),
                 ])
                 ->log('Storage usage alert: Over 90% capacity');
-            
+
             // TODO: Send email notification to tenant admin
             // Mail::to($tenant->admin_email)->send(new StorageAlertMail($tenant));
-            
+
             $this->line("  Alert logged for: {$tenant->name}");
         }
     }
@@ -351,12 +353,14 @@ class MonitorStorageUsage extends Command
         switch ($this->option('format')) {
             case 'json':
                 $this->line(json_encode($data, JSON_PRETTY_PRINT));
+
                 break;
-                
+
             case 'csv':
                 $this->outputCsv($data);
+
                 break;
-                
+
             default:
                 $this->table(
                     ['ID', 'Name', 'DB Storage', 'Actual Storage', 'Limit', 'Usage %', 'Status', 'Difference'],
@@ -373,10 +377,10 @@ class MonitorStorageUsage extends Command
         if (empty($data)) {
             return;
         }
-        
+
         // Headers
         $this->line(implode(',', array_keys($data[0])));
-        
+
         // Data rows
         foreach ($data as $row) {
             $values = array_map(function ($value) {
@@ -384,9 +388,10 @@ class MonitorStorageUsage extends Command
                 if (str_contains($value, ',') || str_contains($value, '"')) {
                     return '"' . str_replace('"', '""', $value) . '"';
                 }
+
                 return $value;
             }, $row);
-            
+
             $this->line(implode(',', $values));
         }
     }
@@ -397,13 +402,13 @@ class MonitorStorageUsage extends Command
     private function formatBytes($bytes, $precision = 2): string
     {
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        
+
         $bytes = max($bytes, 0);
         $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
-        
+
         $bytes /= pow(1024, $pow);
-        
+
         return round($bytes, $precision) . $units[$pow];
     }
 }

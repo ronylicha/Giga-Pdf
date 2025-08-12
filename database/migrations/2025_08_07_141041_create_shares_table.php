@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class () extends Migration {
     /**
      * Run the migrations.
      */
@@ -29,7 +28,7 @@ return new class extends Migration
             $table->json('access_log')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->index('document_id');
             $table->index('shared_by');
             $table->index('shared_with');
@@ -37,7 +36,7 @@ return new class extends Migration
             $table->index('type');
             $table->index('expires_at');
             $table->index('is_active');
-            
+
             // Optimisation MariaDB
             $table->engine = 'InnoDB';
             $table->charset = 'utf8mb4';

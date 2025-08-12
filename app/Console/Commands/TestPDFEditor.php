@@ -16,27 +16,29 @@ class TestPDFEditor extends Command
     {
         $documentId = $this->argument('document_id');
         $document = Document::find($documentId);
-        
-        if (!$document) {
+
+        if (! $document) {
             $this->error("Document not found: {$documentId}");
+
             return 1;
         }
-        
+
         $this->info("Testing PDF editor with document: {$document->original_name}");
-        
+
         try {
             $editor = new SimplePDFEditor();
             $path = Storage::path($document->stored_name);
-            
-            if (!file_exists($path)) {
+
+            if (! file_exists($path)) {
                 $this->error("File not found: {$path}");
+
                 return 1;
             }
-            
+
             $this->info("File path: {$path}");
             $this->info("File exists: " . (file_exists($path) ? 'Yes' : 'No'));
             $this->info("File size: " . filesize($path) . " bytes");
-            
+
             // Test simple modification
             $modifications = [
                 [
@@ -46,30 +48,31 @@ class TestPDFEditor extends Command
                     'y' => 100,
                     'text' => 'Test Text',
                     'fontSize' => 12,
-                    'color' => '#000000'
-                ]
+                    'color' => '#000000',
+                ],
             ];
-            
+
             $this->info("Applying modification...");
             $outputPath = $editor->addTextOverlay($path, $modifications);
-            
+
             if (file_exists($outputPath)) {
                 $this->info("Success! Modified PDF saved to: {$outputPath}");
                 $this->info("Modified file size: " . filesize($outputPath) . " bytes");
-                
+
                 // Clean up
                 unlink($outputPath);
                 $this->info("Temp file cleaned up.");
             } else {
                 $this->error("Failed to create modified PDF");
             }
-            
+
         } catch (\Exception $e) {
             $this->error("Error: " . $e->getMessage());
             $this->error("Trace: " . $e->getTraceAsString());
+
             return 1;
         }
-        
+
         return 0;
     }
 }

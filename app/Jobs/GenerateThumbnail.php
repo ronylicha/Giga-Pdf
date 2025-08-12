@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Document;
+use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -10,14 +11,16 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
 use Imagick;
-use Exception;
 
 class GenerateThumbnail implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     protected $document;
-    
+
     /**
      * Create a new job instance.
      */
@@ -34,7 +37,7 @@ class GenerateThumbnail implements ShouldQueue
         try {
             $sourcePath = Storage::path($this->document->stored_name);
             $thumbnailPath = 'thumbnails/' . $this->document->tenant_id . '/' . $this->document->id . '.jpg';
-            
+
             // Generate thumbnail based on file type
             if ($this->document->mime_type === 'application/pdf') {
                 $this->generatePdfThumbnail($sourcePath, $thumbnailPath);
@@ -44,19 +47,19 @@ class GenerateThumbnail implements ShouldQueue
                 // For other file types, create a generic thumbnail
                 return;
             }
-            
+
             // Update document with thumbnail path
             $this->document->update([
                 'thumbnail_path' => $thumbnailPath,
             ]);
-            
+
         } catch (Exception $e) {
             \Log::error('Failed to generate thumbnail for document ' . $this->document->id, [
                 'error' => $e->getMessage(),
             ]);
         }
     }
-    
+
     /**
      * Generate thumbnail for PDF
      */
@@ -69,16 +72,16 @@ class GenerateThumbnail implements ShouldQueue
             $imagick->setImageFormat('jpg');
             $imagick->thumbnailImage(300, 400, true);
             $imagick->setImageCompressionQuality(85);
-            
+
             $thumbnailContent = $imagick->getImageBlob();
             Storage::put($thumbnailPath, $thumbnailContent);
-            
+
             $imagick->destroy();
         } catch (Exception $e) {
             throw new Exception('Failed to generate PDF thumbnail: ' . $e->getMessage());
         }
     }
-    
+
     /**
      * Generate thumbnail for image
      */
@@ -89,10 +92,10 @@ class GenerateThumbnail implements ShouldQueue
             $imagick->thumbnailImage(300, 400, true);
             $imagick->setImageFormat('jpg');
             $imagick->setImageCompressionQuality(85);
-            
+
             $thumbnailContent = $imagick->getImageBlob();
             Storage::put($thumbnailPath, $thumbnailContent);
-            
+
             $imagick->destroy();
         } catch (Exception $e) {
             throw new Exception('Failed to generate image thumbnail: ' . $e->getMessage());

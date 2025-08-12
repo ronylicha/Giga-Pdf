@@ -39,8 +39,8 @@ class ConversionCompletedNotification extends Notification implements ShouldQueu
     public function toMail(object $notifiable): MailMessage
     {
         $originalDocument = $this->conversion->document;
-        
-        return (new MailMessage)
+
+        return (new MailMessage())
             ->subject('Document Conversion Completed')
             ->greeting('Hello ' . $notifiable->name . ',')
             ->line('Your document conversion has been completed successfully.')

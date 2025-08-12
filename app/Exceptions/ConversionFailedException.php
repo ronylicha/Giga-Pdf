@@ -8,7 +8,7 @@ class ConversionFailedException extends Exception
 {
     protected $documentId;
     protected $conversionId;
-    
+
     /**
      * Create a new exception instance.
      */
@@ -16,25 +16,27 @@ class ConversionFailedException extends Exception
     {
         parent::__construct($message, $code, $previous);
     }
-    
+
     /**
      * Set document ID
      */
     public function setDocumentId(int $documentId): self
     {
         $this->documentId = $documentId;
+
         return $this;
     }
-    
+
     /**
      * Set conversion ID
      */
     public function setConversionId(int $conversionId): self
     {
         $this->conversionId = $conversionId;
+
         return $this;
     }
-    
+
     /**
      * Get document ID
      */
@@ -42,7 +44,7 @@ class ConversionFailedException extends Exception
     {
         return $this->documentId;
     }
-    
+
     /**
      * Get conversion ID
      */
@@ -50,7 +52,7 @@ class ConversionFailedException extends Exception
     {
         return $this->conversionId;
     }
-    
+
     /**
      * Report the exception.
      */
@@ -64,7 +66,7 @@ class ConversionFailedException extends Exception
             'tenant_id' => auth()->user()?->tenant_id,
         ]);
     }
-    
+
     /**
      * Render the exception as an HTTP response.
      */
@@ -78,7 +80,7 @@ class ConversionFailedException extends Exception
                 'conversion_id' => $this->conversionId,
             ], 422);
         }
-        
+
         return redirect()->back()
             ->with('error', 'Document conversion failed: ' . $this->getMessage())
             ->withInput();

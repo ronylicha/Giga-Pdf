@@ -35,18 +35,20 @@ class TenantMigrate extends Command
     public function handle()
     {
         // Check if running in production
-        if (app()->environment('production') && !$this->option('force')) {
-            if (!$this->confirm('You are running migrations in production. Are you sure?')) {
+        if (app()->environment('production') && ! $this->option('force')) {
+            if (! $this->confirm('You are running migrations in production. Are you sure?')) {
                 $this->info('Migration cancelled.');
+
                 return Command::SUCCESS;
             }
         }
 
         // Determine which tenants to migrate
         $tenants = $this->getTenants();
-        
+
         if ($tenants->isEmpty()) {
             $this->error('No tenants found.');
+
             return Command::FAILURE;
         }
 
@@ -59,7 +61,7 @@ class TenantMigrate extends Command
 
         foreach ($tenants as $tenant) {
             $bar->setMessage("Migrating tenant: {$tenant->name}");
-            
+
             try {
                 $this->migrateTenant($tenant);
                 $succeeded++;
@@ -70,7 +72,7 @@ class TenantMigrate extends Command
                 ];
                 $this->error("\nFailed to migrate tenant {$tenant->name}: " . $e->getMessage());
             }
-            
+
             $bar->advance();
         }
 
@@ -79,12 +81,13 @@ class TenantMigrate extends Command
 
         // Show results
         $this->info("✅ Successfully migrated {$succeeded} tenant(s)");
-        
-        if (!empty($failed)) {
+
+        if (! empty($failed)) {
             $this->error("❌ Failed to migrate " . count($failed) . " tenant(s):");
             foreach ($failed as $failure) {
                 $this->line("  - {$failure['tenant']}: {$failure['error']}");
             }
+
             return Command::FAILURE;
         }
 
@@ -101,19 +104,20 @@ class TenantMigrate extends Command
         }
 
         $identifier = $this->argument('tenant');
-        
-        if (!$identifier) {
+
+        if (! $identifier) {
             // Interactive selection
             $tenants = Tenant::pluck('name', 'id')->toArray();
             $tenants['all'] = 'All Tenants';
-            
+
             $choice = $this->choice('Which tenant would you like to migrate?', $tenants);
-            
+
             if ($choice === 'All Tenants') {
                 return Tenant::all();
             }
-            
+
             $tenantId = array_search($choice, $tenants);
+
             return Tenant::where('id', $tenantId)->get();
         }
 
@@ -172,7 +176,7 @@ class TenantMigrate extends Command
 
         // Clear tenant context
         app()->forgetInstance('tenant');
-        
+
         $this->line("  ✅ Tenant {$tenant->name} migrated successfully");
     }
 
@@ -182,17 +186,17 @@ class TenantMigrate extends Command
     private function createTenantTables(Tenant $tenant): void
     {
         $prefix = 'tenant_' . $tenant->id . '_';
-        
+
         // List of tenant-specific tables to create
         $tables = [
-            'settings' => function($table) {
+            'settings' => function ($table) {
                 $table->id();
                 $table->string('key')->unique();
                 $table->text('value')->nullable();
                 $table->string('type')->default('string');
                 $table->timestamps();
             },
-            'custom_fields' => function($table) {
+            'custom_fields' => function ($table) {
                 $table->id();
                 $table->string('entity_type');
                 $table->string('field_name');
@@ -202,7 +206,7 @@ class TenantMigrate extends Command
                 $table->integer('sort_order')->default(0);
                 $table->timestamps();
             },
-            'templates' => function($table) {
+            'templates' => function ($table) {
                 $table->id();
                 $table->string('name');
                 $table->string('type');
@@ -215,8 +219,8 @@ class TenantMigrate extends Command
 
         foreach ($tables as $tableName => $schema) {
             $fullTableName = $prefix . $tableName;
-            
-            if (!Schema::hasTable($fullTableName)) {
+
+            if (! Schema::hasTable($fullTableName)) {
                 Schema::create($fullTableName, $schema);
                 $this->line("  Created table: {$fullTableName}");
             }
@@ -229,14 +233,14 @@ class TenantMigrate extends Command
     private function dropTenantTables(Tenant $tenant): void
     {
         $prefix = 'tenant_' . $tenant->id . '_';
-        
+
         // Get all tables with the tenant prefix
         $tables = DB::select('SHOW TABLES');
         $dbName = env('DB_DATABASE');
-        
+
         foreach ($tables as $table) {
             $tableName = $table->{"Tables_in_{$dbName}"} ?? null;
-            
+
             if ($tableName && str_starts_with($tableName, $prefix)) {
                 Schema::dropIfExists($tableName);
             }
@@ -250,17 +254,17 @@ class TenantMigrate extends Command
     {
         // Create tenant-specific migrations path if needed
         $tenantMigrationsPath = database_path('migrations/tenants');
-        
-        if (!file_exists($tenantMigrationsPath)) {
+
+        if (! file_exists($tenantMigrationsPath)) {
             mkdir($tenantMigrationsPath, 0755, true);
         }
 
         // Check if there are tenant-specific migrations
         $migrations = glob($tenantMigrationsPath . '/*.php');
-        
-        if (!empty($migrations)) {
+
+        if (! empty($migrations)) {
             $this->line("  Running tenant-specific migrations...");
-            
+
             // Run migrations with tenant prefix
             Artisan::call('migrate', [
                 '--path' => 'database/migrations/tenants',

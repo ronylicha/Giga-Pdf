@@ -34,34 +34,36 @@ class CreateSuperAdmin extends Command
         $email = $this->argument('email');
         $name = $this->option('name') ?: $this->ask('What is the super admin name?');
         $password = $this->option('password') ?: $this->secret('What is the super admin password? (min 8 characters)');
-        
+
         // Validate password
         if (strlen($password) < 8) {
             $this->error('Password must be at least 8 characters long.');
+
             return 1;
         }
-        
+
         // Check if user already exists
         if (User::where('email', $email)->exists()) {
             $this->error("User with email {$email} already exists.");
-            
+
             // Ask if we should make existing user a super admin
             if ($this->confirm('Do you want to make this user a super admin?')) {
                 $user = User::where('email', $email)->first();
-                
+
                 // Don't set team context for super-admin
                 app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
-                
+
                 // Assign super-admin role
                 $user->assignRole('super-admin');
-                
+
                 $this->info("✓ User {$email} is now a super admin!");
+
                 return 0;
             }
-            
+
             return 1;
         }
-        
+
         try {
             // Create user without tenant_id (super-admin is global)
             $user = User::create([
@@ -72,22 +74,22 @@ class CreateSuperAdmin extends Command
                 'is_active' => true,
                 'email_verified_at' => now(),
             ]);
-            
+
             // Don't set team context for super-admin
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
-            
+
             // Check if super-admin role exists, create if not
             $superAdminRole = Role::where('name', 'super-admin')
                 ->whereNull('tenant_id')
                 ->first();
-                
-            if (!$superAdminRole) {
+
+            if (! $superAdminRole) {
                 $this->info('Creating super-admin role...');
                 $superAdminRole = Role::create([
                     'name' => 'super-admin',
-                    'guard_name' => 'web'
+                    'guard_name' => 'web',
                 ]);
-                
+
                 // Give all permissions if they exist
                 if (class_exists(\Spatie\Permission\Models\Permission::class)) {
                     $permissions = \Spatie\Permission\Models\Permission::all();
@@ -96,10 +98,10 @@ class CreateSuperAdmin extends Command
                     }
                 }
             }
-            
+
             // Assign super-admin role
             $user->assignRole('super-admin');
-            
+
             $this->info("✓ Super admin created successfully!");
             $this->table(
                 ['Property', 'Value'],
@@ -110,11 +112,12 @@ class CreateSuperAdmin extends Command
                     ['Created At', $user->created_at],
                 ]
             );
-            
+
             return 0;
-            
+
         } catch (\Exception $e) {
             $this->error('Failed to create super admin: ' . $e->getMessage());
+
             return 1;
         }
     }

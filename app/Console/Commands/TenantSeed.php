@@ -7,8 +7,8 @@ use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class TenantSeed extends Command
 {
@@ -36,18 +36,20 @@ class TenantSeed extends Command
     public function handle()
     {
         // Check if running in production
-        if (app()->environment('production') && !$this->option('force')) {
-            if (!$this->confirm('You are running seeders in production. Are you sure?')) {
+        if (app()->environment('production') && ! $this->option('force')) {
+            if (! $this->confirm('You are running seeders in production. Are you sure?')) {
                 $this->info('Seeding cancelled.');
+
                 return Command::SUCCESS;
             }
         }
 
         // Determine which tenants to seed
         $tenants = $this->getTenants();
-        
+
         if ($tenants->isEmpty()) {
             $this->error('No tenants found.');
+
             return Command::FAILURE;
         }
 
@@ -60,7 +62,7 @@ class TenantSeed extends Command
 
         foreach ($tenants as $tenant) {
             $bar->setMessage("Seeding tenant: {$tenant->name}");
-            
+
             try {
                 $this->seedTenant($tenant);
                 $succeeded++;
@@ -71,7 +73,7 @@ class TenantSeed extends Command
                 ];
                 $this->error("\nFailed to seed tenant {$tenant->name}: " . $e->getMessage());
             }
-            
+
             $bar->advance();
         }
 
@@ -80,12 +82,13 @@ class TenantSeed extends Command
 
         // Show results
         $this->info("✅ Successfully seeded {$succeeded} tenant(s)");
-        
-        if (!empty($failed)) {
+
+        if (! empty($failed)) {
             $this->error("❌ Failed to seed " . count($failed) . " tenant(s):");
             foreach ($failed as $failure) {
                 $this->line("  - {$failure['tenant']}: {$failure['error']}");
             }
+
             return Command::FAILURE;
         }
 
@@ -102,19 +105,20 @@ class TenantSeed extends Command
         }
 
         $identifier = $this->argument('tenant');
-        
-        if (!$identifier) {
+
+        if (! $identifier) {
             // Interactive selection
             $tenants = Tenant::pluck('name', 'id')->toArray();
             $tenants['all'] = 'All Tenants';
-            
+
             $choice = $this->choice('Which tenant would you like to seed?', $tenants);
-            
+
             if ($choice === 'All Tenants') {
                 return Tenant::all();
             }
-            
+
             $tenantId = array_search($choice, $tenants);
+
             return Tenant::where('id', $tenantId)->get();
         }
 
@@ -146,7 +150,7 @@ class TenantSeed extends Command
         // Clear tenant context
         app()->forgetInstance('tenant');
         config(['tenant.id' => null]);
-        
+
         $this->line("  ✅ Tenant {$tenant->name} seeded successfully");
     }
 
@@ -156,8 +160,8 @@ class TenantSeed extends Command
     private function runSeederClass(Tenant $tenant, string $seederClass): void
     {
         $fullClass = "Database\\Seeders\\{$seederClass}";
-        
-        if (!class_exists($fullClass)) {
+
+        if (! class_exists($fullClass)) {
             throw new \Exception("Seeder class {$fullClass} not found");
         }
 
@@ -174,18 +178,18 @@ class TenantSeed extends Command
         DB::transaction(function () use ($tenant) {
             // Create default roles if they don't exist
             $this->seedRoles($tenant);
-            
+
             // Create default permissions
             $this->seedPermissions($tenant);
-            
+
             // Create sample data based on subscription plan
             if ($tenant->subscription_plan === 'demo' || app()->environment('local')) {
                 $this->seedSampleData($tenant);
             }
-            
+
             // Create default settings
             $this->seedSettings($tenant);
-            
+
             // Create default templates
             $this->seedTemplates($tenant);
         });
@@ -197,33 +201,33 @@ class TenantSeed extends Command
     private function seedRoles(Tenant $tenant): void
     {
         $this->line("  Creating default roles...");
-        
+
         $roles = [
             'tenant-admin' => [
                 'description' => 'Tenant Administrator',
                 'permissions' => [
                     'manage-users', 'manage-documents', 'manage-settings',
-                    'view-reports', 'manage-roles', 'manage-invitations'
-                ]
+                    'view-reports', 'manage-roles', 'manage-invitations',
+                ],
             ],
             'manager' => [
                 'description' => 'Manager',
                 'permissions' => [
-                    'manage-users', 'manage-documents', 'view-reports'
-                ]
+                    'manage-users', 'manage-documents', 'view-reports',
+                ],
             ],
             'editor' => [
                 'description' => 'Editor',
                 'permissions' => [
                     'create-documents', 'edit-documents', 'delete-documents',
-                    'convert-documents', 'share-documents'
-                ]
+                    'convert-documents', 'share-documents',
+                ],
             ],
             'viewer' => [
                 'description' => 'Viewer',
                 'permissions' => [
-                    'view-documents', 'download-documents'
-                ]
+                    'view-documents', 'download-documents',
+                ],
             ],
         ];
 
@@ -232,7 +236,7 @@ class TenantSeed extends Command
                 ['name' => $roleName, 'team_id' => $tenant->id],
                 ['guard_name' => 'web']
             );
-            
+
             // Attach permissions
             foreach ($roleData['permissions'] as $permissionName) {
                 $permission = Permission::firstOrCreate(
@@ -240,7 +244,7 @@ class TenantSeed extends Command
                 );
                 $role->givePermissionTo($permission);
             }
-            
+
             $this->line("    Created role: {$roleName}");
         }
     }
@@ -251,27 +255,27 @@ class TenantSeed extends Command
     private function seedPermissions(Tenant $tenant): void
     {
         $this->line("  Creating default permissions...");
-        
+
         $permissions = [
             // User management
             'view-users', 'create-users', 'edit-users', 'delete-users', 'manage-users',
-            
+
             // Document management
             'view-documents', 'create-documents', 'edit-documents', 'delete-documents',
             'download-documents', 'share-documents', 'convert-documents', 'manage-documents',
-            
+
             // Settings
             'view-settings', 'manage-settings',
-            
+
             // Reports
             'view-reports', 'export-reports',
-            
+
             // Roles & Permissions
             'view-roles', 'manage-roles',
-            
+
             // Invitations
             'send-invitations', 'manage-invitations',
-            
+
             // Billing (if applicable)
             'view-billing', 'manage-billing',
         ];
@@ -282,7 +286,7 @@ class TenantSeed extends Command
                 'guard_name' => 'web',
             ]);
         }
-        
+
         $this->line("    Created " . count($permissions) . " permissions");
     }
 
@@ -292,7 +296,7 @@ class TenantSeed extends Command
     private function seedSampleData(Tenant $tenant): void
     {
         $this->line("  Creating sample data...");
-        
+
         // Create sample users
         $users = [
             [
@@ -321,15 +325,15 @@ class TenantSeed extends Command
         foreach ($users as $userData) {
             $role = $userData['role'];
             unset($userData['role']);
-            
+
             $user = User::firstOrCreate(
                 ['email' => $userData['email']],
                 $userData
             );
-            
+
             // Assign role with team context
             $user->assignRole($role);
-            
+
             $this->line("    Created user: {$user->name} ({$role})");
         }
     }
@@ -340,7 +344,7 @@ class TenantSeed extends Command
     private function seedSettings(Tenant $tenant): void
     {
         $this->line("  Creating default settings...");
-        
+
         $settings = [
             'date_format' => 'Y-m-d',
             'time_format' => 'H:i:s',
@@ -367,13 +371,14 @@ class TenantSeed extends Command
     private function seedTemplates(Tenant $tenant): void
     {
         $this->line("  Creating default templates...");
-        
+
         $prefix = 'tenant_' . $tenant->id . '_';
         $templatesTable = $prefix . 'templates';
-        
+
         // Check if templates table exists
-        if (!DB::getSchemaBuilder()->hasTable($templatesTable)) {
+        if (! DB::getSchemaBuilder()->hasTable($templatesTable)) {
             $this->line("    Templates table does not exist, skipping...");
+
             return;
         }
 
@@ -410,7 +415,7 @@ class TenantSeed extends Command
         foreach ($templates as $template) {
             DB::table($templatesTable)->insertOrIgnore($template);
         }
-        
+
         $this->line("    Created " . count($templates) . " default templates");
     }
 }

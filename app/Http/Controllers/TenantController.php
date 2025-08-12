@@ -8,8 +8,8 @@ use App\Services\TenantPermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Inertia\Inertia;
 use Illuminate\Validation\Rules\Password;
+use Inertia\Inertia;
 
 class TenantController extends Controller
 {
@@ -18,7 +18,7 @@ class TenantController extends Controller
     public function __construct(TenantPermissionService $permissionService)
     {
         $this->permissionService = $permissionService;
-        
+
         // Only super-admin can access tenant management
         $this->middleware('super.admin');
     }
@@ -120,7 +120,7 @@ class TenantController extends Controller
     public function show(Tenant $tenant)
     {
         $tenant->load(['users.roles', 'documents']);
-        
+
         // Get tenant statistics
         $stats = [
             'storage_used' => $tenant->documents()->sum('size') / (1024 * 1024 * 1024), // Convert to GB
@@ -175,7 +175,7 @@ class TenantController extends Controller
                 $tenant->settings ?? [],
                 $this->getDefaultSettings($validated['subscription_plan'])
             );
-            
+
             // Use custom values or plan defaults
             $validated['max_storage_gb'] = $validated['max_storage_gb'] ?? $this->getStorageByPlan($validated['subscription_plan']);
             $validated['max_users'] = $validated['max_users'] ?? $this->getUsersByPlan($validated['subscription_plan']);
@@ -213,10 +213,10 @@ class TenantController extends Controller
      */
     public function toggleStatus(Tenant $tenant)
     {
-        $tenant->update(['is_active' => !$tenant->is_active]);
-        
+        $tenant->update(['is_active' => ! $tenant->is_active]);
+
         $status = $tenant->is_active ? 'activé' : 'suspendu';
-        
+
         return back()->with('success', "Tenant '{$tenant->name}' {$status} avec succès");
     }
 
@@ -283,16 +283,16 @@ class TenantController extends Controller
                 'priority_support', 'advanced_security', 'custom_domain', 'sso',
                 'audit_logs', 'digital_signatures', 'ocr', 'redaction',
                 'collaboration', 'advanced_editor', 'batch_processing', 'webhooks',
-                'custom_integrations', 'dedicated_support', 'sla_guarantee'
+                'custom_integrations', 'dedicated_support', 'sla_guarantee',
             ],
             'professional' => [
                 'api_access', 'priority_support', 'custom_domain', 'audit_logs',
                 'digital_signatures', 'ocr', 'redaction', 'collaboration',
-                'advanced_editor', 'batch_processing', 'email_support'
+                'advanced_editor', 'batch_processing', 'email_support',
             ],
             'basic' => [
                 'basic_editor', 'basic_conversions', 'basic_sharing',
-                'email_support', 'standard_security'
+                'email_support', 'standard_security',
             ],
             default => ['basic_conversions']
         };

@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -15,7 +14,7 @@ class DatabaseSeeder extends Seeder
     {
         // Seed roles and permissions first
         $this->call(SpatieRolesAndPermissionsSeeder::class);
-        
+
         // Note: Super admin users should be created manually or through a separate seeder
         // They don't belong to any tenant
     }

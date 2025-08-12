@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 class Share extends Model
 {
     use HasFactory;
-    
+
     /**
      * The attributes that are mass assignable.
      */
@@ -31,7 +31,7 @@ class Share extends Model
         'access_log',
         'is_active',
     ];
-    
+
     /**
      * The attributes that should be cast.
      */
@@ -44,7 +44,7 @@ class Share extends Model
         'views_count' => 'integer',
         'downloads_count' => 'integer',
     ];
-    
+
     /**
      * Default attributes
      */
@@ -55,48 +55,48 @@ class Share extends Model
         'is_active' => true,
         'access_log' => '[]',
     ];
-    
+
     /**
      * The attributes that should be hidden for serialization.
      */
     protected $hidden = [
         'password',
     ];
-    
+
     /**
      * Type constants
      */
-    const TYPE_INTERNAL = 'internal';
-    const TYPE_PUBLIC = 'public';
-    const TYPE_PROTECTED = 'protected';
-    
+    public const TYPE_INTERNAL = 'internal';
+    public const TYPE_PUBLIC = 'public';
+    public const TYPE_PROTECTED = 'protected';
+
     /**
      * Permission constants
      */
-    const PERMISSION_VIEW = 'view';
-    const PERMISSION_DOWNLOAD = 'download';
-    const PERMISSION_EDIT = 'edit';
-    const PERMISSION_COMMENT = 'comment';
-    
+    public const PERMISSION_VIEW = 'view';
+    public const PERMISSION_DOWNLOAD = 'download';
+    public const PERMISSION_EDIT = 'edit';
+    public const PERMISSION_COMMENT = 'comment';
+
     /**
      * Boot method
      */
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($share) {
             // Générer un token unique pour les partages publics/protégés
-            if (in_array($share->type, [self::TYPE_PUBLIC, self::TYPE_PROTECTED]) && !$share->token) {
+            if (in_array($share->type, [self::TYPE_PUBLIC, self::TYPE_PROTECTED]) && ! $share->token) {
                 do {
                     $token = Str::random(32);
                 } while (static::where('token', $token)->exists());
-                
+
                 $share->token = $token;
             }
         });
     }
-    
+
     /**
      * Get document relationship
      */
@@ -104,7 +104,7 @@ class Share extends Model
     {
         return $this->belongsTo(Document::class);
     }
-    
+
     /**
      * Get sharer relationship
      */
@@ -112,7 +112,7 @@ class Share extends Model
     {
         return $this->belongsTo(User::class, 'shared_by');
     }
-    
+
     /**
      * Get recipient relationship
      */
@@ -120,7 +120,7 @@ class Share extends Model
     {
         return $this->belongsTo(User::class, 'shared_with');
     }
-    
+
     /**
      * Check if share is expired
      */
@@ -128,15 +128,15 @@ class Share extends Model
     {
         return $this->expires_at && $this->expires_at->isPast();
     }
-    
+
     /**
      * Check if share is active
      */
     public function isActive(): bool
     {
-        return $this->is_active && !$this->isExpired();
+        return $this->is_active && ! $this->isExpired();
     }
-    
+
     /**
      * Check if share is internal
      */
@@ -144,7 +144,7 @@ class Share extends Model
     {
         return $this->type === self::TYPE_INTERNAL;
     }
-    
+
     /**
      * Check if share is public
      */
@@ -152,7 +152,7 @@ class Share extends Model
     {
         return $this->type === self::TYPE_PUBLIC;
     }
-    
+
     /**
      * Check if share is protected
      */
@@ -160,7 +160,7 @@ class Share extends Model
     {
         return $this->type === self::TYPE_PROTECTED;
     }
-    
+
     /**
      * Check if share has specific permission
      */
@@ -168,7 +168,7 @@ class Share extends Model
     {
         return in_array($permission, $this->permissions ?? []);
     }
-    
+
     /**
      * Check if can view
      */
@@ -176,7 +176,7 @@ class Share extends Model
     {
         return $this->hasPermission(self::PERMISSION_VIEW);
     }
-    
+
     /**
      * Check if can download
      */
@@ -184,7 +184,7 @@ class Share extends Model
     {
         return $this->hasPermission(self::PERMISSION_DOWNLOAD);
     }
-    
+
     /**
      * Check if can edit
      */
@@ -192,7 +192,7 @@ class Share extends Model
     {
         return $this->hasPermission(self::PERMISSION_EDIT);
     }
-    
+
     /**
      * Check if can comment
      */
@@ -200,66 +200,66 @@ class Share extends Model
     {
         return $this->hasPermission(self::PERMISSION_COMMENT);
     }
-    
+
     /**
      * Get share URL
      */
     public function getShareUrl(): string
     {
-        if (!$this->token) {
+        if (! $this->token) {
             return '';
         }
-        
+
         return route('share.view', $this->token);
     }
-    
+
     /**
      * Get share QR code URL
      */
     public function getQrCodeUrl(): string
     {
         $url = $this->getShareUrl();
-        
-        if (!$url) {
+
+        if (! $url) {
             return '';
         }
-        
+
         return 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . urlencode($url);
     }
-    
+
     /**
      * Record access
      */
     public function recordAccess(string $ip, string $userAgent = null): void
     {
         $this->increment('views_count');
-        
+
         $accessLog = $this->access_log ?? [];
         $accessLog[] = [
             'ip' => $ip,
             'user_agent' => $userAgent,
             'accessed_at' => now()->toIso8601String(),
         ];
-        
+
         // Garder seulement les 100 derniers accès
         if (count($accessLog) > 100) {
             $accessLog = array_slice($accessLog, -100);
         }
-        
+
         $this->update([
             'last_accessed_at' => now(),
             'last_accessed_ip' => $ip,
             'access_log' => $accessLog,
         ]);
     }
-    
+
     /**
      * Record download
      */
     public function recordDownload(string $ip = null): void
     {
         $this->increment('downloads_count');
-        
+
         if ($ip) {
             $accessLog = $this->access_log ?? [];
             $accessLog[] = [
@@ -267,11 +267,11 @@ class Share extends Model
                 'ip' => $ip,
                 'downloaded_at' => now()->toIso8601String(),
             ];
-            
+
             $this->update(['access_log' => $accessLog]);
         }
     }
-    
+
     /**
      * Revoke share
      */
@@ -279,19 +279,19 @@ class Share extends Model
     {
         return $this->update(['is_active' => false]);
     }
-    
+
     /**
      * Extend expiration
      */
     public function extendExpiration(int $days): bool
     {
-        $newExpiration = $this->expires_at 
+        $newExpiration = $this->expires_at
             ? $this->expires_at->addDays($days)
             : now()->addDays($days);
-            
+
         return $this->update(['expires_at' => $newExpiration]);
     }
-    
+
     /**
      * Update permissions
      */
@@ -304,17 +304,17 @@ class Share extends Model
             self::PERMISSION_EDIT,
             self::PERMISSION_COMMENT,
         ];
-        
+
         $permissions = array_intersect($permissions, $validPermissions);
-        
+
         // La permission "view" est toujours requise
-        if (!in_array(self::PERMISSION_VIEW, $permissions)) {
+        if (! in_array(self::PERMISSION_VIEW, $permissions)) {
             $permissions[] = self::PERMISSION_VIEW;
         }
-        
+
         return $this->update(['permissions' => $permissions]);
     }
-    
+
     /**
      * Scope for active shares
      */
@@ -326,7 +326,7 @@ class Share extends Model
                   ->orWhere('expires_at', '>', now());
             });
     }
-    
+
     /**
      * Scope for expired shares
      */
@@ -334,7 +334,7 @@ class Share extends Model
     {
         return $query->where('expires_at', '<', now());
     }
-    
+
     /**
      * Scope for shares by type
      */

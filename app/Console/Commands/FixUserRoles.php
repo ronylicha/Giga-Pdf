@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Models\User;
+use Illuminate\Console\Command;
 use Spatie\Permission\Models\Role;
 
 class FixUserRoles extends Command
@@ -28,98 +28,98 @@ class FixUserRoles extends Command
     public function handle()
     {
         $dryRun = $this->option('dry-run');
-        
+
         if ($dryRun) {
             $this->info('DRY RUN MODE - No changes will be made');
             $this->info('=========================================');
         }
-        
+
         // Ensure roles exist
         $this->ensureRolesExist();
-        
+
         // Fix Super Admin
-        $superAdmins = User::where(function($q) {
-                $q->whereNull('tenant_id')
-                  ->where(function($q2) {
-                      $q2->where('email', 'like', '%superadmin%')
-                         ->orWhere('name', 'like', '%Super Admin%');
-                  });
-            })
+        $superAdmins = User::where(function ($q) {
+            $q->whereNull('tenant_id')
+              ->where(function ($q2) {
+                  $q2->where('email', 'like', '%superadmin%')
+                     ->orWhere('name', 'like', '%Super Admin%');
+              });
+        })
             ->get();
-            
+
         foreach ($superAdmins as $user) {
-            if (!$user->hasRole('super-admin')) {
+            if (! $user->hasRole('super-admin')) {
                 $this->info("Assigning super-admin role to: {$user->name} ({$user->email})");
-                if (!$dryRun) {
+                if (! $dryRun) {
                     $user->assignRole('super-admin');
                 }
             }
         }
-        
+
         // Fix Tenant Admins
         $tenantAdmins = User::whereNotNull('tenant_id')
-            ->where(function($q) {
+            ->where(function ($q) {
                 $q->where('email', 'like', '%admin%')
                   ->orWhere('name', 'like', '%Admin%');
             })
             ->get();
-            
+
         foreach ($tenantAdmins as $user) {
             if ($user->roles->isEmpty()) {
                 $this->info("Assigning tenant-admin role to: {$user->name} ({$user->email})");
-                if (!$dryRun) {
+                if (! $dryRun) {
                     $user->assignRole('tenant-admin');
                 }
             }
         }
-        
+
         // Fix regular users
         $regularUsers = User::whereNotNull('tenant_id')
             ->whereDoesntHave('roles')
             ->get();
-            
+
         foreach ($regularUsers as $user) {
             $this->info("Assigning viewer role to: {$user->name} ({$user->email})");
-            if (!$dryRun) {
+            if (! $dryRun) {
                 $user->assignRole('viewer');
             }
         }
-        
+
         if ($dryRun) {
             $this->info("\nTo apply these changes, run the command without --dry-run");
         } else {
             $this->info("\n✅ Roles have been fixed successfully!");
         }
-        
+
         // Show summary
         $this->showSummary();
-        
+
         return 0;
     }
-    
+
     private function ensureRolesExist()
     {
         $roles = ['super-admin', 'tenant-admin', 'manager', 'editor', 'viewer'];
-        
+
         foreach ($roles as $roleName) {
-            if (!Role::where('name', $roleName)->exists()) {
+            if (! Role::where('name', $roleName)->exists()) {
                 $this->info("Creating role: {$roleName}");
                 Role::create(['name' => $roleName, 'guard_name' => 'web']);
             }
         }
     }
-    
+
     private function showSummary()
     {
         $this->info("\n📊 Current Role Distribution:");
         $this->info("============================");
-        
+
         $roles = Role::withCount('users')->get();
-        
+
         foreach ($roles as $role) {
             $this->info("{$role->name}: {$role->users_count} users");
         }
-        
+
         $usersWithoutRoles = User::whereDoesntHave('roles')->count();
         $this->info("No role: {$usersWithoutRoles} users");
     }

@@ -2,29 +2,32 @@
 
 namespace App\Jobs;
 
-use App\Models\Document;
 use App\Models\Conversion;
+use App\Models\Document;
 use App\Services\ConversionService;
+use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use Exception;
 
 class ProcessDocumentConversion implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
 
     protected $document;
     protected $targetFormat;
     protected $options;
     protected $conversionId;
-    
+
     public $tries = 3;
     public $timeout = 600; // 10 minutes
-    
+
     /**
      * Create a new job instance.
      */
@@ -34,24 +37,24 @@ class ProcessDocumentConversion implements ShouldQueue
         $this->targetFormat = $targetFormat;
         $this->options = $options;
         $this->conversionId = $conversionId;
-        
+
         $this->onQueue('default');
     }
-    
+
     /**
      * Execute the job.
      */
     public function handle(ConversionService $conversionService)
     {
         $conversion = null;
-        
+
         try {
             // Get or create conversion record
             if ($this->conversionId) {
                 $conversion = Conversion::find($this->conversionId);
             }
-            
-            if (!$conversion) {
+
+            if (! $conversion) {
                 $conversion = Conversion::create([
                     'tenant_id' => $this->document->tenant_id,
                     'document_id' => $this->document->id,
@@ -62,14 +65,14 @@ class ProcessDocumentConversion implements ShouldQueue
                     'options' => $this->options,
                 ]);
             }
-            
+
             // Mark as processing
             $conversion->markAsProcessing();
             $conversion->update(['queue_id' => $this->job->getJobId()]);
-            
+
             // Notify user that conversion started
             $this->notifyProgress($conversion, 10, 'Starting conversion...');
-            
+
             // Perform conversion
             if ($this->targetFormat === 'pdf') {
                 $this->notifyProgress($conversion, 30, 'Converting to PDF...');
@@ -78,22 +81,22 @@ class ProcessDocumentConversion implements ShouldQueue
                 $this->notifyProgress($conversion, 30, 'Converting from PDF...');
                 $resultDocument = $conversionService->convertFromPDF($this->document, $this->targetFormat, $this->options);
             }
-            
+
             $this->notifyProgress($conversion, 90, 'Finalizing...');
-            
+
             // Mark as completed
             $conversion->markAsCompleted($resultDocument->id);
-            
+
             // Send completion notification
             $this->notifyCompletion($conversion, $resultDocument);
-            
+
             Log::info('Document conversion completed successfully', [
                 'conversion_id' => $conversion->id,
                 'document_id' => $this->document->id,
                 'target_format' => $this->targetFormat,
                 'result_document_id' => $resultDocument->id,
             ]);
-            
+
         } catch (Exception $e) {
             Log::error('Document conversion failed', [
                 'conversion_id' => $conversion?->id,
@@ -102,23 +105,23 @@ class ProcessDocumentConversion implements ShouldQueue
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             if ($conversion) {
                 $conversion->markAsFailed($e->getMessage());
                 $this->notifyFailure($conversion, $e->getMessage());
             }
-            
+
             throw $e;
         }
     }
-    
+
     /**
      * Notify progress via websocket
      */
     protected function notifyProgress(Conversion $conversion, int $progress, string $message = ''): void
     {
         $conversion->updateProgress($progress);
-        
+
         // Broadcast progress update
         broadcast(new \App\Events\ConversionProgress(
             $conversion,
@@ -126,7 +129,7 @@ class ProcessDocumentConversion implements ShouldQueue
             $message
         ))->toOthers();
     }
-    
+
     /**
      * Notify completion
      */
@@ -137,7 +140,7 @@ class ProcessDocumentConversion implements ShouldQueue
             $conversion,
             $resultDocument
         ))->toOthers();
-        
+
         // Send email notification if enabled
         if ($conversion->user && $conversion->user->getPreference('email_on_conversion_complete', true)) {
             $conversion->user->notify(new \App\Notifications\ConversionCompletedNotification(
@@ -146,7 +149,7 @@ class ProcessDocumentConversion implements ShouldQueue
             ));
         }
     }
-    
+
     /**
      * Notify failure
      */
@@ -157,7 +160,7 @@ class ProcessDocumentConversion implements ShouldQueue
             $conversion,
             $error
         ))->toOthers();
-        
+
         // Send email notification if enabled
         if ($conversion->user && $conversion->user->getPreference('email_on_conversion_fail', true)) {
             $conversion->user->notify(new \App\Notifications\ConversionFailedNotification(
@@ -166,7 +169,7 @@ class ProcessDocumentConversion implements ShouldQueue
             ));
         }
     }
-    
+
     /**
      * Get format from mime type
      */
@@ -187,10 +190,10 @@ class ProcessDocumentConversion implements ShouldQueue
             'text/plain' => 'txt',
             'text/markdown' => 'md',
         ];
-        
+
         return $map[$mimeType] ?? 'unknown';
     }
-    
+
     /**
      * Handle job failure
      */
@@ -201,16 +204,16 @@ class ProcessDocumentConversion implements ShouldQueue
             'target_format' => $this->targetFormat,
             'error' => $exception->getMessage(),
         ]);
-        
+
         if ($this->conversionId) {
             $conversion = Conversion::find($this->conversionId);
-            if ($conversion && !$conversion->isFailed()) {
+            if ($conversion && ! $conversion->isFailed()) {
                 $conversion->markAsFailed('Job failed: ' . $exception->getMessage());
                 $this->notifyFailure($conversion, $exception->getMessage());
             }
         }
     }
-    
+
     /**
      * Determine if job should retry
      */
@@ -220,11 +223,11 @@ class ProcessDocumentConversion implements ShouldQueue
         if ($exception instanceof \App\Exceptions\InvalidDocumentException) {
             return false;
         }
-        
+
         if ($exception instanceof \App\Exceptions\StorageQuotaExceededException) {
             return false;
         }
-        
+
         return true;
     }
 }

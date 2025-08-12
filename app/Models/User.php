@@ -4,15 +4,17 @@ namespace App\Models;
 
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasFactory, Notifiable, HasRoles;
+    use HasFactory;
+    use Notifiable;
+    use HasRoles;
 
     /**
      * The attributes that are mass assignable.
@@ -153,7 +155,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function hasTwoFactorEnabled(): bool
     {
-        return !is_null($this->two_factor_secret);
+        return ! is_null($this->two_factor_secret);
     }
 
     /**
@@ -161,7 +163,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function hasTwoFactorConfirmed(): bool
     {
-        return !is_null($this->two_factor_confirmed_at);
+        return ! is_null($this->two_factor_confirmed_at);
     }
 
     /**
@@ -177,7 +179,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function isSuspended(): bool
     {
-        return !$this->is_active;
+        return ! $this->is_active;
     }
 
     /**
@@ -205,22 +207,22 @@ class User extends Authenticatable implements MustVerifyEmail
         if ($this->isSuperAdmin()) {
             return true;
         }
-        
+
         // Must be in the same tenant
         if ($this->tenant_id !== $targetUser->tenant_id) {
             return false;
         }
-        
+
         // Tenant admin can manage all users in their tenant
         if ($this->isTenantAdmin()) {
-            return !$targetUser->isTenantAdmin(); // Cannot manage other tenant admins
+            return ! $targetUser->isTenantAdmin(); // Cannot manage other tenant admins
         }
-        
+
         // Manager can manage editors and viewers
         if ($this->isManager()) {
             return $targetUser->isEditor() || $targetUser->isViewer();
         }
-        
+
         return false;
     }
 
@@ -241,15 +243,15 @@ class User extends Authenticatable implements MustVerifyEmail
     public function generateTwoFactorRecoveryCodes(): array
     {
         $codes = [];
-        
+
         for ($i = 0; $i < 8; $i++) {
             $codes[] = strtoupper(bin2hex(random_bytes(4)));
         }
-        
+
         $this->update([
-            'two_factor_recovery_codes' => $codes
+            'two_factor_recovery_codes' => $codes,
         ]);
-        
+
         return $codes;
     }
 
@@ -283,7 +285,7 @@ class User extends Authenticatable implements MustVerifyEmail
     public function verifyRecoveryCode(string $code): bool
     {
         $stored = $this->two_factor_recovery_codes ?: [];
-        if (!is_array($stored)) {
+        if (! is_array($stored)) {
             return false;
         }
         $index = array_search($code, $stored, true);
@@ -293,6 +295,7 @@ class User extends Authenticatable implements MustVerifyEmail
         unset($stored[$index]);
         $this->two_factor_recovery_codes = array_values($stored);
         $this->save();
+
         return true;
     }
 
@@ -307,6 +310,7 @@ class User extends Authenticatable implements MustVerifyEmail
         }
         $this->two_factor_recovery_codes = $codes;
         $this->save();
+
         return $codes;
     }
 
@@ -315,10 +319,10 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function needsPasswordChange(): bool
     {
-        if (!$this->password_changed_at) {
+        if (! $this->password_changed_at) {
             return true;
         }
-        
+
         // Password expires after 90 days
         return $this->password_changed_at->lt(now()->subDays(90));
     }

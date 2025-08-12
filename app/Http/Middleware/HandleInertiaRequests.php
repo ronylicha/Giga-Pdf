@@ -30,7 +30,7 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
-        
+
         return [
             ...parent::share($request),
             'auth' => [
@@ -58,16 +58,16 @@ class HandleInertiaRequests extends Middleware
             ],
         ];
     }
-    
+
     /**
      * Get user permissions
      */
     private function getUserPermissions($user): array
     {
-        if (!$user) {
+        if (! $user) {
             return [];
         }
-        
+
         try {
             // Set team context based on user's tenant
             if ($user->tenant_id) {
@@ -75,36 +75,37 @@ class HandleInertiaRequests extends Middleware
             } else {
                 app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
             }
-            
+
             // For Spatie Permission package
             if (method_exists($user, 'getAllPermissions')) {
                 return $user->getAllPermissions()->pluck('name')->toArray();
             }
-            
+
             // Fallback: get permissions through roles
             if (method_exists($user, 'getPermissionsViaRoles')) {
                 return $user->getPermissionsViaRoles()->pluck('name')->toArray();
             }
-            
+
             return [];
         } catch (\Exception $e) {
             \Log::warning('Error getting user permissions', [
                 'user_id' => $user->id ?? null,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
-    
+
     /**
      * Get the user's primary role slug
      */
     private function getUserRole($user): ?string
     {
-        if (!$user) {
+        if (! $user) {
             return null;
         }
-        
+
         try {
             // Set team context based on user's tenant
             if ($user->tenant_id) {
@@ -112,12 +113,12 @@ class HandleInertiaRequests extends Middleware
             } else {
                 app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
             }
-            
+
             // Check for super admin first (system-wide role)
             if (method_exists($user, 'hasRole') && $user->hasRole('super-admin')) {
                 return 'super-admin';
             }
-            
+
             // Get first role name using Spatie Permission
             $roles = $user->getRoleNames();
             if ($roles && $roles->count() > 0) {
@@ -126,24 +127,24 @@ class HandleInertiaRequests extends Middleware
         } catch (\Exception $e) {
             \Log::warning('Error getting user primary role', [
                 'user_id' => $user->id ?? null,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
-        
+
         return 'user'; // fallback default role
     }
-    
+
     /**
      * Get all user roles as readable strings
      */
     private function getUserRoles($user): array
     {
-        if (!$user) {
+        if (! $user) {
             return [];
         }
-        
+
         $roles = [];
-        
+
         try {
             // Set team context based on user's tenant
             if ($user->tenant_id) {
@@ -151,23 +152,23 @@ class HandleInertiaRequests extends Middleware
             } else {
                 app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(null);
             }
-            
+
             // Get all roles using Spatie Permission
             $userRoles = $user->getRoleNames();
-            
+
             if ($userRoles && $userRoles->count() > 0) {
                 foreach ($userRoles as $roleName) {
                     // Format role name for display
                     $formattedName = str_replace('-', ' ', $roleName);
                     $formattedName = str_replace('_', ' ', $formattedName);
                     $formattedName = ucwords($formattedName);
-                    
-                    if (!in_array($formattedName, $roles)) {
+
+                    if (! in_array($formattedName, $roles)) {
                         $roles[] = $formattedName;
                     }
                 }
             }
-            
+
             // Fallback: if no roles, assign a default role
             if (empty($roles)) {
                 $roles[] = 'User';
@@ -175,11 +176,11 @@ class HandleInertiaRequests extends Middleware
         } catch (\Exception $e) {
             \Log::warning('Error getting user roles', [
                 'user_id' => $user->id ?? null,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             $roles[] = 'User';
         }
-        
+
         return $roles;
     }
 }

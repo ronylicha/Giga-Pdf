@@ -10,7 +10,8 @@ use Illuminate\Support\Str;
 
 class Invitation extends Model
 {
-    use HasFactory, BelongsToTenant;
+    use HasFactory;
+    use BelongsToTenant;
 
     protected $fillable = [
         'tenant_id',
@@ -39,9 +40,9 @@ class Invitation extends Model
         static::creating(function ($invitation) {
             // Generate unique token
             $invitation->token = Str::random(64);
-            
+
             // Set expiration to 7 days from now if not set
-            if (!$invitation->expires_at) {
+            if (! $invitation->expires_at) {
                 $invitation->expires_at = now()->addDays(7);
             }
         });

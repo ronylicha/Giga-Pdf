@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Models\User;
+use Illuminate\Console\Command;
 
 class ListUsersAndRoles extends Command
 {
@@ -27,13 +27,13 @@ class ListUsersAndRoles extends Command
     public function handle()
     {
         $users = User::with('roles')->get();
-        
+
         $headers = ['ID', 'Name', 'Email', 'Tenant ID', 'Roles', 'Is Super Admin', 'Is Tenant Admin'];
         $data = [];
-        
+
         foreach ($users as $user) {
             $roles = $user->roles->pluck('slug')->implode(', ');
-            
+
             $data[] = [
                 $user->id,
                 $user->name,
@@ -44,9 +44,9 @@ class ListUsersAndRoles extends Command
                 $user->isTenantAdmin() ? 'Yes' : 'No',
             ];
         }
-        
+
         $this->table($headers, $data);
-        
+
         return Command::SUCCESS;
     }
 }

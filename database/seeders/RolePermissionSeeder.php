@@ -3,8 +3,8 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class RolePermissionSeeder extends Seeder
 {
@@ -26,27 +26,27 @@ class RolePermissionSeeder extends Seeder
             'documents.share',
             'documents.convert',
             'documents.download',
-            
+
             // Users
             'users.view',
             'users.create',
             'users.edit',
             'users.delete',
             'users.invite',
-            
+
             // Settings
             'settings.view',
             'settings.edit',
-            
+
             // Tenant
             'tenant.manage',
             'tenant.billing',
-            
+
             // Admin
             'admin.access',
             'admin.users',
             'admin.settings',
-            
+
             // Super Admin
             'super-admin.access',
             'super-admin.tenants',
@@ -59,7 +59,7 @@ class RolePermissionSeeder extends Seeder
         }
 
         // Create roles and assign permissions
-        
+
         // Super Admin - accès total système
         $superAdmin = Role::firstOrCreate(['name' => 'super-admin']);
         $superAdmin->givePermissionTo(Permission::all());

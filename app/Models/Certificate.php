@@ -2,14 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Crypt;
-use App\Models\Traits\BelongsToTenant;
 
 class Certificate extends Model
 {
-    use HasFactory, BelongsToTenant;
+    use HasFactory;
+    use BelongsToTenant;
 
     protected $fillable = [
         'tenant_id',
@@ -106,8 +107,8 @@ class Certificate extends Model
      */
     public function isValid()
     {
-        return $this->is_active 
-            && $this->valid_from <= now() 
+        return $this->is_active
+            && $this->valid_from <= now()
             && $this->valid_to >= now();
     }
 

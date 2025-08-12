@@ -13,14 +13,14 @@ class SuperAdminOnly
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             return redirect()->route('login');
         }
-        
-        if (!auth()->user()->isSuperAdmin()) {
+
+        if (! auth()->user()->isSuperAdmin()) {
             abort(403, 'Accès réservé aux super administrateurs.');
         }
-        
+
         return $next($request);
     }
 }

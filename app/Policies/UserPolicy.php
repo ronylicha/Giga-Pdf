@@ -14,7 +14,7 @@ class UserPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->hasPermissionTo('view users') || 
+        return $user->hasPermissionTo('view users') ||
                $user->hasRole(['tenant-admin', 'manager']) ||
                $user->isSuperAdmin();
     }
@@ -28,9 +28,9 @@ class UserPolicy
         if ($user->id === $model->id) {
             return true;
         }
-        
+
         // Must have permission and be in same tenant
-        return ($user->hasPermissionTo('view users') || $user->hasRole(['tenant-admin', 'manager'])) && 
+        return ($user->hasPermissionTo('view users') || $user->hasRole(['tenant-admin', 'manager'])) &&
                $user->tenant_id === $model->tenant_id;
     }
 
@@ -39,7 +39,7 @@ class UserPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasPermissionTo('create users') || 
+        return $user->hasPermissionTo('create users') ||
                $user->hasRole(['tenant-admin', 'manager']) ||
                $user->isSuperAdmin();
     }
@@ -53,7 +53,7 @@ class UserPolicy
         if ($user->id === $model->id) {
             return true;
         }
-        
+
         // Check if user can manage target user
         return $user->canManageUser($model);
     }
@@ -67,9 +67,9 @@ class UserPolicy
         if ($user->id === $model->id) {
             return false;
         }
-        
+
         // Must have permission and be able to manage the user
-        return ($user->hasPermissionTo('delete users') || $user->hasRole(['tenant-admin', 'manager'])) && 
+        return ($user->hasPermissionTo('delete users') || $user->hasRole(['tenant-admin', 'manager'])) &&
                $user->canManageUser($model);
     }
 
@@ -78,7 +78,7 @@ class UserPolicy
      */
     public function restore(User $user, User $model): bool
     {
-        return ($user->hasPermissionTo('delete users') || $user->hasRole(['tenant-admin', 'manager'])) && 
+        return ($user->hasPermissionTo('delete users') || $user->hasRole(['tenant-admin', 'manager'])) &&
                $user->canManageUser($model);
     }
 
@@ -99,8 +99,8 @@ class UserPolicy
         if ($user->id === $model->id) {
             return false;
         }
-        
-        return ($user->hasPermissionTo('assign roles') || $user->hasRole(['tenant-admin'])) && 
+
+        return ($user->hasPermissionTo('assign roles') || $user->hasRole(['tenant-admin'])) &&
                $user->canManageUser($model);
     }
 
@@ -113,8 +113,8 @@ class UserPolicy
         if ($user->id === $model->id) {
             return false;
         }
-        
-        return ($user->hasPermissionTo('edit users') || $user->hasRole(['tenant-admin', 'manager'])) && 
+
+        return ($user->hasPermissionTo('edit users') || $user->hasRole(['tenant-admin', 'manager'])) &&
                $user->canManageUser($model);
     }
 
@@ -127,8 +127,8 @@ class UserPolicy
         if ($user->id === $model->id) {
             return false;
         }
-        
-        return ($user->hasPermissionTo('edit users') || $user->hasRole(['tenant-admin'])) && 
+
+        return ($user->hasPermissionTo('edit users') || $user->hasRole(['tenant-admin'])) &&
                $user->canManageUser($model);
     }
 
@@ -138,20 +138,20 @@ class UserPolicy
     public function impersonate(User $user, User $model): bool
     {
         // Only super admin can impersonate
-        if (!$user->isSuperAdmin()) {
+        if (! $user->isSuperAdmin()) {
             return false;
         }
-        
+
         // Cannot impersonate yourself
         if ($user->id === $model->id) {
             return false;
         }
-        
+
         // Cannot impersonate another super admin
         if ($model->isSuperAdmin()) {
             return false;
         }
-        
+
         return true;
     }
 }

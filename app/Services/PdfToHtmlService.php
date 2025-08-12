@@ -30,13 +30,13 @@ class PdfToHtmlService
                     'images' => [],
                     'styles' => '',
                     'fonts' => [],
-                    'full_html' => $pyMuPdfHtml
+                    'full_html' => $pyMuPdfHtml,
                 ];
             }
         } catch (Exception $e) {
             Log::error('PDF to HTML conversion failed.', [
                 'pdf_path' => $pdfPath,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
 
@@ -47,7 +47,7 @@ class PdfToHtmlService
             'images' => [],
             'styles' => '',
             'fonts' => [],
-            'full_html' => '<div>Erreur: Impossible de convertir le PDF</div>'
+            'full_html' => '<div>Erreur: Impossible de convertir le PDF</div>',
         ];
     }
 
@@ -63,14 +63,15 @@ class PdfToHtmlService
     private function extractWithPyMuPDF($pdfPath, $documentId = null, $requestedVersion = null)
     {
         $imageDir = $this->prepareImageDirectory($documentId);
-        
+
         $convertersToTry = $this->getConverterChain($requestedVersion);
 
         foreach ($convertersToTry as $versionKey) {
             $scriptPath = Config::get("pdf_converter.converters.{$versionKey}");
 
-            if (!$scriptPath || !File::exists($scriptPath)) {
+            if (! $scriptPath || ! File::exists($scriptPath)) {
                 Log::warning("Converter script for version '{$versionKey}' not found.", ['path' => $scriptPath]);
+
                 continue;
             }
 
@@ -78,9 +79,9 @@ class PdfToHtmlService
                 'python3',
                 $scriptPath,
                 $pdfPath,
-                $imageDir
+                $imageDir,
             ]);
-            
+
             $process->setTimeout(120); // 2 minutes timeout
             $process->run();
 
@@ -88,26 +89,27 @@ class PdfToHtmlService
                 $output = $process->getOutput();
                 if ($output && (strpos($output, '<style>') !== false || strpos($output, '<div') !== false)) {
                     Log::info("Successfully converted PDF using {$versionKey}.");
-                    
+
                     // Fix image paths in HTML - replace relative paths with route-based URLs
                     if ($documentId) {
                         $output = $this->fixImagePaths($output, $documentId, $imageDir);
                     }
-                    
+
                     return $output;
                 }
             }
-            
+
             // If the process fails, log the error and try the next converter
             $errorOutput = $process->getErrorOutput();
             Log::error("PyMuPDF extraction failed with {$versionKey}.", [
                 'script' => $scriptPath,
                 'exit_code' => $process->getExitCode(),
-                'error' => substr($errorOutput, 0, 1000) // Log first 1000 chars of error
+                'error' => substr($errorOutput, 0, 1000), // Log first 1000 chars of error
             ]);
         }
 
         Log::error('All PDF conversion attempts failed.', ['pdf_path' => $pdfPath]);
+
         return null;
     }
 
@@ -140,7 +142,7 @@ class PdfToHtmlService
     private function getConverterChain($requestedVersion = null)
     {
         $fallbackChain = Config::get('pdf_converter.fallback_chain', []);
-        
+
         if ($requestedVersion && in_array($requestedVersion, $fallbackChain)) {
             // Prioritize the requested version
             $chain = [$requestedVersion];
@@ -150,15 +152,16 @@ class PdfToHtmlService
                     $chain[] = $version;
                 }
             }
+
             return $chain;
         }
 
         return $fallbackChain;
     }
-    
+
     /**
      * Fix image paths in HTML to use proper URLs
-     * 
+     *
      * @param string $html The HTML content with relative image paths
      * @param int $documentId The document ID
      * @param string $imageDir The directory where images are stored
@@ -169,31 +172,32 @@ class PdfToHtmlService
         // Replace relative image paths with route-based URLs
         return preg_replace_callback(
             '/<img([^>]*?)src="([^"]*)"([^>]*)>/i',
-            function($matches) use ($documentId, $imageDir) {
+            function ($matches) use ($documentId, $imageDir) {
                 $beforeSrc = $matches[1];
                 $src = $matches[2];
                 $afterSrc = $matches[3];
-                
+
                 // Skip if already a data URI or full URL
                 if (strpos($src, 'data:') === 0 || strpos($src, 'http') === 0) {
                     return $matches[0];
                 }
-                
+
                 // If src is empty or just a filename, fix it
-                if (empty($src) || !str_contains($src, '/')) {
+                if (empty($src) || ! str_contains($src, '/')) {
                     // Extract filename from the full tag if src is empty
                     if (empty($src) && preg_match('/p\d+_(?:img|vec)\d+\.png/', $matches[0], $filenameMatch)) {
                         $src = $filenameMatch[0];
                     }
-                    
-                    if (!empty($src)) {
+
+                    if (! empty($src)) {
                         // Create a route-based URL for the image
                         $newSrc = "/documents/{$documentId}/assets/" . basename($src);
                         Log::debug("Fixed image path", ['original' => $src, 'new' => $newSrc]);
+
                         return "<img{$beforeSrc}src=\"{$newSrc}\"{$afterSrc}>";
                     }
                 }
-                
+
                 return $matches[0];
             },
             $html

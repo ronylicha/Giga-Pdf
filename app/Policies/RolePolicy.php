@@ -2,9 +2,9 @@
 
 namespace App\Policies;
 
-use Spatie\Permission\Models\Role;
 use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
+use Spatie\Permission\Models\Role;
 
 class RolePolicy
 {
@@ -23,15 +23,15 @@ class RolePolicy
      */
     public function view(User $user, Role $role): bool
     {
-        if (!$user->can('view roles')) {
+        if (! $user->can('view roles')) {
             return false;
         }
-        
+
         // Super admin can view all roles
         if ($user->isSuperAdmin()) {
             return true;
         }
-        
+
         // Others can only view roles from their tenant
         return $role->tenant_id === $user->tenant_id;
     }
@@ -49,20 +49,20 @@ class RolePolicy
      */
     public function update(User $user, Role $role): bool
     {
-        if (!$user->can('edit roles')) {
+        if (! $user->can('edit roles')) {
             return false;
         }
-        
+
         // Super admin can update all roles
         if ($user->isSuperAdmin()) {
             return true;
         }
-        
+
         // Prevent editing system roles
         if (in_array($role->name, ['super-admin', 'tenant-admin', 'manager', 'editor', 'viewer'])) {
             return false;
         }
-        
+
         // Others can only update roles from their tenant
         return $role->tenant_id === $user->tenant_id;
     }
@@ -72,20 +72,20 @@ class RolePolicy
      */
     public function delete(User $user, Role $role): bool
     {
-        if (!$user->can('delete roles')) {
+        if (! $user->can('delete roles')) {
             return false;
         }
-        
+
         // Cannot delete system roles
         if (in_array($role->name, ['super-admin', 'tenant-admin', 'manager', 'editor', 'viewer'])) {
             return false;
         }
-        
+
         // Super admin can delete all non-system roles
         if ($user->isSuperAdmin()) {
             return true;
         }
-        
+
         // Others can only delete roles from their tenant
         return $role->tenant_id === $user->tenant_id;
     }
@@ -95,7 +95,7 @@ class RolePolicy
      */
     public function restore(User $user, Role $role): bool
     {
-        return $user->can('delete roles') && 
+        return $user->can('delete roles') &&
                ($user->isSuperAdmin() || $role->tenant_id === $user->tenant_id);
     }
 
@@ -104,8 +104,8 @@ class RolePolicy
      */
     public function forceDelete(User $user, Role $role): bool
     {
-        return $user->isSuperAdmin() && 
-               !in_array($role->name, ['super-admin', 'tenant-admin', 'manager', 'editor', 'viewer']);
+        return $user->isSuperAdmin() &&
+               ! in_array($role->name, ['super-admin', 'tenant-admin', 'manager', 'editor', 'viewer']);
     }
 
     /**
@@ -113,20 +113,20 @@ class RolePolicy
      */
     public function assign(User $user, Role $role): bool
     {
-        if (!$user->can('assign roles')) {
+        if (! $user->can('assign roles')) {
             return false;
         }
-        
+
         // Super admin can assign any role
         if ($user->isSuperAdmin()) {
             return true;
         }
-        
+
         // Tenant admin can only assign roles from their tenant
         if ($user->isTenantAdmin()) {
             return $role->tenant_id === $user->tenant_id;
         }
-        
+
         return false;
     }
 }

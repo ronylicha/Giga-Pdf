@@ -24,7 +24,7 @@ class TenantManagementController extends Controller
     public function index(Request $request)
     {
         $query = Tenant::query();
-        
+
         // Search
         if ($request->search) {
             $query->where(function ($q) use ($request) {
@@ -33,10 +33,10 @@ class TenantManagementController extends Controller
                   ->orWhere('slug', 'like', "%{$request->search}%");
             });
         }
-        
+
         // Tous les tenants sont en plan gratuit
         // Pas de filtre par plan nécessaire
-        
+
         // Filter by status
         if ($request->status === 'active') {
             $query->where(function ($q) {
@@ -46,16 +46,16 @@ class TenantManagementController extends Controller
         } elseif ($request->status === 'expired') {
             $query->where('subscription_expires_at', '<=', now());
         }
-        
+
         // Sort
         $sortField = $request->sort_by ?? 'created_at';
         $sortDirection = $request->sort_dir ?? 'desc';
         $query->orderBy($sortField, $sortDirection);
-        
+
         $tenants = $query->withCount(['users', 'documents'])
             ->paginate(15)
             ->withQueryString();
-        
+
         // Calculate global statistics
         $stats = [
             'total_tenants' => Tenant::count(),
@@ -67,7 +67,7 @@ class TenantManagementController extends Controller
             'total_documents' => DB::table('documents')->count(),
             'total_storage' => DB::table('documents')->sum('size'),
         ];
-        
+
         return Inertia::render('SuperAdmin/Tenants/Index', [
             'tenants' => $tenants,
             'stats' => $stats,
@@ -86,7 +86,7 @@ class TenantManagementController extends Controller
         $tenant->load(['users' => function ($query) {
             $query->withCount(['documents', 'conversions']);
         }]);
-        
+
         // Get tenant statistics
         $stats = [
             'users_count' => $tenant->users()->count(),
@@ -101,20 +101,20 @@ class TenantManagementController extends Controller
                 ->latest('created_at')
                 ->first()?->created_at,
         ];
-        
+
         // Get recent activity
         $activities = DB::table('activity_log')
             ->where('tenant_id', $tenant->id)
             ->latest('created_at')
             ->limit(20)
             ->get();
-        
+
         // Get subscription history
         $subscriptionHistory = DB::table('subscription_history')
             ->where('tenant_id', $tenant->id)
             ->latest('created_at')
             ->get();
-        
+
         return Inertia::render('SuperAdmin/Tenants/Show', [
             'tenant' => $tenant,
             'stats' => $stats,
@@ -156,9 +156,9 @@ class TenantManagementController extends Controller
             'admin_email' => 'required|email|unique:users,email',
             'admin_password' => ['required', Password::defaults()],
         ]);
-        
+
         DB::beginTransaction();
-        
+
         try {
             // Create tenant
             $tenant = Tenant::create([
@@ -177,7 +177,7 @@ class TenantManagementController extends Controller
                 ],
                 'features' => $this->getDefaultFeatures(),
             ]);
-            
+
             // Create admin user for the tenant
             $adminUser = User::create([
                 'tenant_id' => $tenant->id,
@@ -186,21 +186,21 @@ class TenantManagementController extends Controller
                 'password' => Hash::make($validated['admin_password']),
                 'email_verified_at' => now(),
             ]);
-            
+
             // Assign tenant_admin role
             $adminUser->assignRole('tenant_admin');
-            
+
             // Create default directories structure
             $this->createDefaultDirectories($tenant);
-            
+
             DB::commit();
-            
+
             return redirect()->route('super-admin.tenants.show', $tenant)
                 ->with('success', "Tenant '{$tenant->name}' créé avec succès.");
-                
+
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             return back()->withInput()
                 ->with('error', 'Erreur lors de la création du tenant: ' . $e->getMessage());
         }
@@ -231,17 +231,17 @@ class TenantManagementController extends Controller
             'subscription_expires_at' => 'nullable|date',
             'is_active' => 'boolean',
         ]);
-        
+
         // Check if reducing limits would violate current usage
         if ($validated['max_users'] > 0 && $tenant->users()->count() > $validated['max_users']) {
             return back()->with('error', 'Impossible de réduire la limite d\'utilisateurs en dessous du nombre actuel.');
         }
-        
+
         $currentStorageGB = $tenant->getStorageUsed() / (1024 * 1024 * 1024);
         if ($currentStorageGB > $validated['max_storage_gb']) {
             return back()->with('error', 'Impossible de réduire la limite de stockage en dessous de l\'utilisation actuelle.');
         }
-        
+
         $tenant->update([
             'name' => $validated['name'],
             'domain' => $validated['domain'],
@@ -252,15 +252,15 @@ class TenantManagementController extends Controller
             'subscription_expires_at' => $validated['subscription_expires_at'],
             'features' => $this->getDefaultFeatures(),
         ]);
-        
+
         // Handle activation/deactivation
         if (isset($validated['is_active'])) {
-            if (!$validated['is_active']) {
+            if (! $validated['is_active']) {
                 // Deactivate all users of this tenant
                 $tenant->users()->update(['is_active' => false]);
             }
         }
-        
+
         return redirect()->route('super-admin.tenants.show', $tenant)
             ->with('success', 'Tenant mis à jour avec succès.');
     }
@@ -274,28 +274,28 @@ class TenantManagementController extends Controller
         if ($tenant->documents()->count() > 0) {
             return back()->with('error', 'Impossible de supprimer un tenant avec des documents. Archivez d\'abord les documents.');
         }
-        
+
         DB::beginTransaction();
-        
+
         try {
             // Delete all tenant data
             $tenant->users()->delete();
             $tenant->invitations()->delete();
-            
+
             // Delete storage directories
             $this->deleteStorageDirectories($tenant);
-            
+
             // Delete tenant
             $tenant->delete();
-            
+
             DB::commit();
-            
+
             return redirect()->route('super-admin.tenants.index')
                 ->with('success', 'Tenant supprimé avec succès.');
-                
+
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             return back()->with('error', 'Erreur lors de la suppression: ' . $e->getMessage());
         }
     }
@@ -307,7 +307,7 @@ class TenantManagementController extends Controller
     {
         $tenant->loadCount('users');
         $tenant->storage_used = $tenant->getStorageUsed();
-        
+
         return Inertia::render('SuperAdmin/Tenants/EditLimits', [
             'tenant' => $tenant,
         ]);
@@ -323,32 +323,32 @@ class TenantManagementController extends Controller
             'max_storage_gb' => 'required|numeric|min:0.1',
             'max_file_size_mb' => 'required|numeric|min:1',
         ]);
-        
+
         // Vérifier si la réduction des limites ne viole pas l'utilisation actuelle
         $currentUsersCount = $tenant->users()->count();
         if ($validated['max_users'] < $currentUsersCount) {
             return back()->withErrors([
-                'max_users' => "Impossible de réduire la limite d'utilisateurs en dessous du nombre actuel ({$currentUsersCount})."
+                'max_users' => "Impossible de réduire la limite d'utilisateurs en dessous du nombre actuel ({$currentUsersCount}).",
             ]);
         }
-        
+
         $currentStorageGB = $tenant->getStorageUsed() / (1024 * 1024 * 1024);
         if ($validated['max_storage_gb'] < $currentStorageGB) {
             return back()->withErrors([
                 'max_storage_gb' => sprintf(
                     "Impossible de réduire la limite de stockage en dessous de l'utilisation actuelle (%.2f GB).",
                     $currentStorageGB
-                )
+                ),
             ]);
         }
-        
+
         // Mettre à jour les limites
         $tenant->update([
             'max_users' => $validated['max_users'],
             'max_storage_gb' => $validated['max_storage_gb'],
             'max_file_size_mb' => $validated['max_file_size_mb'],
         ]);
-        
+
         return redirect()->route('super-admin.tenants.show', $tenant)
             ->with('success', 'Les limites du tenant ont été mises à jour avec succès.');
     }
@@ -363,10 +363,10 @@ class TenantManagementController extends Controller
             'suspended_at' => now(),
             'suspended_reason' => request('reason'),
         ]);
-        
+
         // Deactivate all users
         $tenant->users()->update(['is_active' => false]);
-        
+
         return back()->with('success', 'Tenant suspendu.');
     }
 
@@ -380,10 +380,10 @@ class TenantManagementController extends Controller
             'suspended_at' => null,
             'suspended_reason' => null,
         ]);
-        
+
         // Reactivate users
         $tenant->users()->update(['is_active' => true]);
-        
+
         return back()->with('success', 'Tenant réactivé.');
     }
 
@@ -404,9 +404,9 @@ class TenantManagementController extends Controller
                 'storage_used' => $tenant->getStorageUsed(),
             ],
         ];
-        
+
         $json = json_encode($exportData, JSON_PRETTY_PRINT);
-        
+
         return response($json, 200)
             ->header('Content-Type', 'application/json')
             ->header('Content-Disposition', 'attachment; filename="tenant-' . $tenant->slug . '-export.json"');
@@ -451,7 +451,7 @@ class TenantManagementController extends Controller
             "temp/{$tenant->id}",
             "exports/{$tenant->id}",
         ];
-        
+
         foreach ($directories as $dir) {
             \Storage::makeDirectory($dir);
         }
@@ -468,7 +468,7 @@ class TenantManagementController extends Controller
             "temp/{$tenant->id}",
             "exports/{$tenant->id}",
         ];
-        
+
         foreach ($directories as $dir) {
             \Storage::deleteDirectory($dir);
         }

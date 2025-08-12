@@ -9,8 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Conversion extends Model
 {
-    use HasFactory, BelongsToTenant;
-    
+    use HasFactory;
+    use BelongsToTenant;
+
     /**
      * The attributes that are mass assignable.
      */
@@ -31,7 +32,7 @@ class Conversion extends Model
         'queue_id',
         'processing_time',
     ];
-    
+
     /**
      * The attributes that should be cast.
      */
@@ -43,7 +44,7 @@ class Conversion extends Model
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
     ];
-    
+
     /**
      * Default attributes
      */
@@ -53,32 +54,32 @@ class Conversion extends Model
         'retry_count' => 0,
         'options' => '{}',
     ];
-    
+
     /**
      * Status constants
      */
-    const STATUS_PENDING = 'pending';
-    const STATUS_PROCESSING = 'processing';
-    const STATUS_COMPLETED = 'completed';
-    const STATUS_FAILED = 'failed';
-    
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_PROCESSING = 'processing';
+    public const STATUS_COMPLETED = 'completed';
+    public const STATUS_FAILED = 'failed';
+
     /**
      * Boot method
      */
     protected static function boot()
     {
         parent::boot();
-        
+
         static::updating(function ($conversion) {
             // Calculer le temps de traitement lors de la complétion
-            if ($conversion->status === self::STATUS_COMPLETED && 
-                $conversion->started_at && 
+            if ($conversion->status === self::STATUS_COMPLETED &&
+                $conversion->started_at &&
                 $conversion->completed_at) {
                 $conversion->processing_time = $conversion->started_at->diffInSeconds($conversion->completed_at);
             }
         });
     }
-    
+
     /**
      * Get document relationship
      */
@@ -86,7 +87,7 @@ class Conversion extends Model
     {
         return $this->belongsTo(Document::class);
     }
-    
+
     /**
      * Get result document relationship
      */
@@ -94,7 +95,7 @@ class Conversion extends Model
     {
         return $this->belongsTo(Document::class, 'result_document_id');
     }
-    
+
     /**
      * Get user relationship
      */
@@ -102,7 +103,7 @@ class Conversion extends Model
     {
         return $this->belongsTo(User::class);
     }
-    
+
     /**
      * Check if conversion is pending
      */
@@ -110,7 +111,7 @@ class Conversion extends Model
     {
         return $this->status === self::STATUS_PENDING;
     }
-    
+
     /**
      * Check if conversion is processing
      */
@@ -118,7 +119,7 @@ class Conversion extends Model
     {
         return $this->status === self::STATUS_PROCESSING;
     }
-    
+
     /**
      * Check if conversion is completed
      */
@@ -126,7 +127,7 @@ class Conversion extends Model
     {
         return $this->status === self::STATUS_COMPLETED;
     }
-    
+
     /**
      * Check if conversion failed
      */
@@ -134,7 +135,7 @@ class Conversion extends Model
     {
         return $this->status === self::STATUS_FAILED;
     }
-    
+
     /**
      * Check if conversion can be retried
      */
@@ -142,7 +143,7 @@ class Conversion extends Model
     {
         return $this->isFailed() && $this->retry_count < 3;
     }
-    
+
     /**
      * Mark as processing
      */
@@ -154,7 +155,7 @@ class Conversion extends Model
             'progress' => 0,
         ]);
     }
-    
+
     /**
      * Mark as completed
      */
@@ -167,7 +168,7 @@ class Conversion extends Model
             'result_document_id' => $resultDocumentId,
         ]);
     }
-    
+
     /**
      * Mark as failed
      */
@@ -179,7 +180,7 @@ class Conversion extends Model
             'error_message' => $errorMessage,
         ]);
     }
-    
+
     /**
      * Update progress
      */
@@ -187,7 +188,7 @@ class Conversion extends Model
     {
         $this->update(['progress' => min(100, max(0, $progress))]);
     }
-    
+
     /**
      * Increment retry count
      */
@@ -195,26 +196,26 @@ class Conversion extends Model
     {
         $this->increment('retry_count');
     }
-    
+
     /**
      * Get formatted processing time
      */
     public function getFormattedProcessingTime(): string
     {
-        if (!$this->processing_time) {
+        if (! $this->processing_time) {
             return 'N/A';
         }
-        
+
         if ($this->processing_time < 60) {
             return $this->processing_time . ' secondes';
         }
-        
+
         $minutes = floor($this->processing_time / 60);
         $seconds = $this->processing_time % 60;
-        
+
         return sprintf('%d min %d sec', $minutes, $seconds);
     }
-    
+
     /**
      * Get status color for UI
      */
@@ -228,7 +229,7 @@ class Conversion extends Model
             default => 'gray'
         };
     }
-    
+
     /**
      * Get status label
      */
@@ -242,7 +243,7 @@ class Conversion extends Model
             default => 'Inconnu'
         };
     }
-    
+
     /**
      * Get format label
      */
@@ -250,7 +251,7 @@ class Conversion extends Model
     {
         return strtoupper($this->from_format) . ' → ' . strtoupper($this->to_format);
     }
-    
+
     /**
      * Scope for pending conversions
      */
@@ -258,7 +259,7 @@ class Conversion extends Model
     {
         return $query->where('status', self::STATUS_PENDING);
     }
-    
+
     /**
      * Scope for processing conversions
      */
@@ -266,7 +267,7 @@ class Conversion extends Model
     {
         return $query->where('status', self::STATUS_PROCESSING);
     }
-    
+
     /**
      * Scope for completed conversions
      */
@@ -274,7 +275,7 @@ class Conversion extends Model
     {
         return $query->where('status', self::STATUS_COMPLETED);
     }
-    
+
     /**
      * Scope for failed conversions
      */
@@ -282,7 +283,7 @@ class Conversion extends Model
     {
         return $query->where('status', self::STATUS_FAILED);
     }
-    
+
     /**
      * Scope for recent conversions
      */

@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Inertia\Inertia;
@@ -47,13 +47,13 @@ class RegisteredUserController extends Controller
             $baseSlug = Str::slug($request->tenant_name);
             $slug = $baseSlug;
             $counter = 1;
-            
+
             // Keep checking until we find a unique slug
             while (Tenant::where('slug', $slug)->exists()) {
                 $slug = $baseSlug . '-' . $counter;
                 $counter++;
             }
-            
+
             // Create the tenant first
             $tenant = Tenant::create([
                 'name' => $request->tenant_name,
@@ -107,14 +107,14 @@ class RegisteredUserController extends Controller
                 'is_active' => true, // Ensure user is active
                 'email_verified_at' => now(), // Auto-verify for tenant admins
             ]);
-            
+
             // Create roles and permissions for this tenant
             $permissionService = new \App\Services\TenantPermissionService();
             $permissionService->createTenantRolesAndPermissions($tenant);
-            
+
             // Set team context for Spatie permissions
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($tenant->id);
-            
+
             // Assign the tenant-admin role to the user
             $user->assignRole('tenant-admin');
 
@@ -128,12 +128,12 @@ class RegisteredUserController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             \Log::error('Registration failed: ' . $e->getMessage(), [
                 'exception' => $e,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return back()->withErrors([
                 'tenant_name' => 'Failed to create organization: ' . $e->getMessage(),
             ])->withInput($request->except('password', 'password_confirmation'));

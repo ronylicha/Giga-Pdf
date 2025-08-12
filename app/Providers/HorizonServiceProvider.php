@@ -32,12 +32,12 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
             if (app()->environment('local')) {
                 return true;
             }
-            
+
             // Allow super admins
             if ($user && $user->hasRole('super-admin')) {
                 return true;
             }
-            
+
             // Allow specific emails
             return in_array(optional($user)->email, [
                 'admin@gigapdf.com',

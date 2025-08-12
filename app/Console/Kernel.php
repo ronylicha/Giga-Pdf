@@ -14,10 +14,10 @@ class Kernel extends ConsoleKernel
     {
         // Cleanup temporary PDF files daily
         $schedule->command('pdf:cleanup-temp')->daily();
-        
+
         // Optimize storage weekly
         $schedule->command('pdf:optimize-storage')->weekly();
-        
+
         // Reindex search content monthly
         $schedule->command('pdf:reindex-search')->monthly();
 
@@ -26,20 +26,20 @@ class Kernel extends ConsoleKernel
 
         // Restart queue workers hourly for memory leaks
         $schedule->command('queue:restart')->hourly();
-        
+
         // Backup database and files daily at 2 AM
         $schedule->command('backup:run --only-db')->dailyAt('02:00');
         $schedule->command('backup:run --only-files')->weeklyOn(1, '03:00'); // Monday at 3 AM
-        
+
         // Clean old backups
         $schedule->command('backup:clean')->daily()->at('04:00');
-        
+
         // Monitor tenant limits daily
         $schedule->command('monitor:tenant-limits --alert')->daily()->at('09:00');
-        
+
         // Monitor storage usage weekly
         $schedule->command('monitor:storage-usage --alert')->weekly()->sundays()->at('10:00');
-        
+
         // Monitor queue health every 30 minutes
         $schedule->command('monitor:queue-health --alert')->everyThirtyMinutes();
     }

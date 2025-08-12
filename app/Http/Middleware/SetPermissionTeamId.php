@@ -18,7 +18,7 @@ class SetPermissionTeamId
             // Set the tenant ID for Spatie Permission context
             app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId(auth()->user()->tenant_id);
         }
-        
+
         return $next($request);
     }
 }

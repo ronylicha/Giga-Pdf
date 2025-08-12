@@ -5,15 +5,17 @@ namespace App\Models;
 use App\Traits\BelongsToTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 
 class Document extends Model
 {
-    use HasFactory, SoftDeletes, BelongsToTenant;
-    
+    use HasFactory;
+    use SoftDeletes;
+    use BelongsToTenant;
+
     /**
      * The attributes that are mass assignable.
      */
@@ -37,7 +39,7 @@ class Document extends Model
         'access_count',
         'extension',
     ];
-    
+
     /**
      * The attributes that should be cast.
      */
@@ -50,7 +52,7 @@ class Document extends Model
         'access_count' => 'integer',
         'last_accessed_at' => 'datetime',
     ];
-    
+
     /**
      * Default attributes
      */
@@ -61,14 +63,14 @@ class Document extends Model
         'metadata' => '{}',
         'tags' => '[]',
     ];
-    
+
     /**
      * Boot method
      */
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($document) {
             // Générer un hash si non fourni
             if (empty($document->hash) && $document->stored_name) {
@@ -78,29 +80,29 @@ class Document extends Model
                 }
             }
         });
-        
+
         static::deleting(function ($document) {
             // Supprimer le fichier physique lors de la suppression
             if ($document->stored_name && Storage::exists($document->stored_name)) {
                 Storage::delete($document->stored_name);
             }
-            
+
             // Supprimer le thumbnail
             if ($document->thumbnail_path && Storage::exists($document->thumbnail_path)) {
                 Storage::delete($document->thumbnail_path);
             }
-            
+
             // Supprimer les documents enfants
             $document->children()->delete();
-            
+
             // Supprimer les partages associés
             $document->shares()->delete();
-            
+
             // Supprimer les conversions associées
             $document->conversions()->delete();
         });
     }
-    
+
     /**
      * Get user relationship
      */
@@ -108,7 +110,7 @@ class Document extends Model
     {
         return $this->belongsTo(User::class);
     }
-    
+
     /**
      * Get parent document relationship
      */
@@ -116,7 +118,7 @@ class Document extends Model
     {
         return $this->belongsTo(Document::class, 'parent_id');
     }
-    
+
     /**
      * Get child documents relationship
      */
@@ -124,7 +126,7 @@ class Document extends Model
     {
         return $this->hasMany(Document::class, 'parent_id');
     }
-    
+
     /**
      * Get conversions relationship
      */
@@ -132,7 +134,7 @@ class Document extends Model
     {
         return $this->hasMany(Conversion::class);
     }
-    
+
     /**
      * Get shares relationship
      */
@@ -140,7 +142,7 @@ class Document extends Model
     {
         return $this->hasMany(Share::class);
     }
-    
+
     /**
      * Check if document is a PDF
      */
@@ -148,7 +150,7 @@ class Document extends Model
     {
         return $this->mime_type === 'application/pdf';
     }
-    
+
     /**
      * Check if document is an image
      */
@@ -156,7 +158,7 @@ class Document extends Model
     {
         return str_starts_with($this->mime_type, 'image/');
     }
-    
+
     /**
      * Check if document is a text file
      */
@@ -171,7 +173,7 @@ class Document extends Model
             'application/xml',
         ]);
     }
-    
+
     /**
      * Check if document is an office document
      */
@@ -189,7 +191,7 @@ class Document extends Model
             'application/vnd.oasis.opendocument.presentation',
         ]);
     }
-    
+
     /**
      * Get file extension
      */
@@ -197,7 +199,7 @@ class Document extends Model
     {
         return pathinfo($this->original_name, PATHINFO_EXTENSION);
     }
-    
+
     /**
      * Get file name without extension
      */
@@ -205,7 +207,7 @@ class Document extends Model
     {
         return pathinfo($this->original_name, PATHINFO_FILENAME);
     }
-    
+
     /**
      * Get formatted file size
      */
@@ -213,15 +215,15 @@ class Document extends Model
     {
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
         $bytes = $this->size;
-        
+
         $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
-        
+
         $bytes /= pow(1024, $pow);
-        
+
         return round($bytes, 2) . ' ' . $units[$pow];
     }
-    
+
     /**
      * Get document URL
      */
@@ -230,10 +232,10 @@ class Document extends Model
         if ($this->is_public) {
             return route('documents.public', $this->id);
         }
-        
+
         return route('documents.show', $this->id);
     }
-    
+
     /**
      * Get download URL
      */
@@ -241,19 +243,19 @@ class Document extends Model
     {
         return route('documents.download', $this->id);
     }
-    
+
     /**
      * Get thumbnail URL
      */
     public function getThumbnailUrl(): ?string
     {
-        if (!$this->thumbnail_path) {
+        if (! $this->thumbnail_path) {
             return null;
         }
-        
+
         return Storage::url($this->thumbnail_path);
     }
-    
+
     /**
      * Get storage path
      */
@@ -261,7 +263,7 @@ class Document extends Model
     {
         return Storage::path($this->stored_name);
     }
-    
+
     /**
      * Check if document exists on disk
      */
@@ -269,7 +271,7 @@ class Document extends Model
     {
         return Storage::exists($this->stored_name);
     }
-    
+
     /**
      * Mark document as accessed
      */
@@ -278,7 +280,7 @@ class Document extends Model
         $this->increment('access_count');
         $this->update(['last_accessed_at' => now()]);
     }
-    
+
     /**
      * Check if user can view this document
      */
@@ -288,76 +290,77 @@ class Document extends Model
         if ($this->is_public) {
             return true;
         }
-        
+
         // Pas d'utilisateur connecté
-        if (!$user) {
+        if (! $user) {
             return false;
         }
-        
+
         // Propriétaire du document
         if ($this->user_id === $user->id) {
             return true;
         }
-        
+
         // Même tenant
         if ($this->tenant_id === $user->tenant_id) {
             return true;
         }
-        
+
         // Document partagé avec l'utilisateur
         if ($this->shares()->where('shared_with', $user->id)->exists()) {
             return true;
         }
-        
+
         return false;
     }
-    
+
     /**
      * Check if user can edit this document
      */
     public function canBeEditedBy(?User $user): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
-        
+
         // Propriétaire du document
         if ($this->user_id === $user->id) {
             return true;
         }
-        
+
         // Admin du tenant
         if ($this->tenant_id === $user->tenant_id && $user->isTenantAdmin()) {
             return true;
         }
-        
+
         // Document partagé avec droits d'édition
         $share = $this->shares()
             ->where('shared_with', $user->id)
             ->first();
-            
+
         if ($share && in_array('edit', $share->permissions)) {
             return true;
         }
-        
+
         return false;
     }
-    
+
     /**
      * Add tag to document
      */
     public function addTag(string $tag): bool
     {
         $tags = $this->tags ?? [];
-        
-        if (!in_array($tag, $tags)) {
+
+        if (! in_array($tag, $tags)) {
             $tags[] = $tag;
+
             return $this->update(['tags' => $tags]);
         }
-        
+
         return false;
     }
-    
+
     /**
      * Remove tag from document
      */
@@ -365,10 +368,10 @@ class Document extends Model
     {
         $tags = $this->tags ?? [];
         $tags = array_diff($tags, [$tag]);
-        
+
         return $this->update(['tags' => array_values($tags)]);
     }
-    
+
     /**
      * Update metadata
      */
@@ -376,9 +379,10 @@ class Document extends Model
     {
         $currentMetadata = $this->metadata ?? [];
         $this->metadata = array_merge($currentMetadata, $metadata);
+
         return $this->save();
     }
-    
+
     /**
      * Get metadata value
      */
@@ -386,7 +390,7 @@ class Document extends Model
     {
         return data_get($this->metadata, $key, $default);
     }
-    
+
     /**
      * Scope for searching documents
      */
@@ -398,7 +402,7 @@ class Document extends Model
               ->orWhereJsonContains('tags', $searchTerm);
         });
     }
-    
+
     /**
      * Scope for filtering by type
      */

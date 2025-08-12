@@ -3,9 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Document;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
-use Carbon\Carbon;
 
 class CleanupTempDocuments extends Command
 {
@@ -30,14 +30,14 @@ class CleanupTempDocuments extends Command
     {
         $hours = $this->option('hours');
         $cutoffTime = Carbon::now()->subHours($hours);
-        
+
         $this->info("Cleaning up temporary documents older than {$hours} hours...");
-        
+
         // Find temp documents older than cutoff time
         $tempDocuments = Document::where('metadata->is_temp', true)
             ->where('created_at', '<', $cutoffTime)
             ->get();
-        
+
         $count = 0;
         foreach ($tempDocuments as $tempDoc) {
             try {
@@ -45,49 +45,49 @@ class CleanupTempDocuments extends Command
                 if (Storage::exists($tempDoc->stored_name)) {
                     Storage::delete($tempDoc->stored_name);
                 }
-                
+
                 // Delete the database record
                 $tempDoc->delete();
                 $count++;
-                
+
                 $this->info("Deleted temp document: {$tempDoc->id}");
             } catch (\Exception $e) {
                 $this->error("Failed to delete temp document {$tempDoc->id}: " . $e->getMessage());
             }
         }
-        
+
         $this->info("Cleaned up {$count} temporary documents.");
-        
+
         // Also clean up orphaned temp files
         $this->cleanupOrphanedFiles();
-        
+
         return Command::SUCCESS;
     }
-    
+
     /**
      * Clean up orphaned temp files that don't have database records
      */
     private function cleanupOrphanedFiles()
     {
         $this->info("Checking for orphaned temp files...");
-        
+
         $tempPath = 'temp';
-        if (!Storage::exists($tempPath)) {
+        if (! Storage::exists($tempPath)) {
             return;
         }
-        
+
         $files = Storage::allFiles($tempPath);
         $orphanedCount = 0;
-        
+
         foreach ($files as $file) {
             // Check if there's a document record for this file
             $exists = Document::where('stored_name', $file)->exists();
-            
-            if (!$exists) {
+
+            if (! $exists) {
                 // Check file age
                 $lastModified = Storage::lastModified($file);
                 $fileAge = Carbon::createFromTimestamp($lastModified);
-                
+
                 if ($fileAge->isBefore(Carbon::now()->subHours(24))) {
                     Storage::delete($file);
                     $orphanedCount++;
@@ -95,7 +95,7 @@ class CleanupTempDocuments extends Command
                 }
             }
         }
-        
+
         if ($orphanedCount > 0) {
             $this->info("Cleaned up {$orphanedCount} orphaned files.");
         }

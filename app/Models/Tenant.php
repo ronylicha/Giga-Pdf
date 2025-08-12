@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 class Tenant extends Model
 {
     use HasFactory;
-    
+
     /**
      * The attributes that are mass assignable.
      */
@@ -30,7 +30,7 @@ class Tenant extends Model
         'suspended_at',
         'suspended_reason',
     ];
-    
+
     /**
      * The attributes that should be cast.
      */
@@ -45,7 +45,7 @@ class Tenant extends Model
         'max_users' => 'integer',
         'max_file_size_mb' => 'integer',
     ];
-    
+
     /**
      * Default settings for new tenants
      */
@@ -58,19 +58,19 @@ class Tenant extends Model
         'subscription_plan' => 'free',
         'is_active' => true,
     ];
-    
+
     /**
      * Boot method
      */
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($tenant) {
             // Générer un slug unique si non fourni
             if (empty($tenant->slug)) {
                 $tenant->slug = Str::slug($tenant->name);
-                
+
                 // S'assurer que le slug est unique
                 $originalSlug = $tenant->slug;
                 $count = 1;
@@ -79,14 +79,14 @@ class Tenant extends Model
                     $count++;
                 }
             }
-            
+
             // Définir les features par défaut selon le plan
             if (empty($tenant->features)) {
                 $tenant->features = $tenant->getDefaultFeatures();
             }
         });
     }
-    
+
     /**
      * Get users relationship
      */
@@ -94,7 +94,7 @@ class Tenant extends Model
     {
         return $this->hasMany(User::class);
     }
-    
+
     /**
      * Get documents relationship
      */
@@ -102,7 +102,7 @@ class Tenant extends Model
     {
         return $this->hasMany(Document::class);
     }
-    
+
     /**
      * Get conversions relationship
      */
@@ -110,7 +110,7 @@ class Tenant extends Model
     {
         return $this->hasMany(Conversion::class);
     }
-    
+
     /**
      * Get activity logs relationship
      */
@@ -118,7 +118,7 @@ class Tenant extends Model
     {
         return $this->hasMany(ActivityLog::class);
     }
-    
+
     /**
      * Get invitations relationship
      */
@@ -126,7 +126,7 @@ class Tenant extends Model
     {
         return $this->hasMany(Invitation::class);
     }
-    
+
     /**
      * Check if tenant has a specific feature
      */
@@ -134,7 +134,7 @@ class Tenant extends Model
     {
         return in_array($feature, $this->features ?? []);
     }
-    
+
     /**
      * Get default features based on subscription plan
      */
@@ -161,10 +161,10 @@ class Tenant extends Model
             'custom_integrations',
             'advanced_security',
             'sso',
-            'white_label'
+            'white_label',
         ];
     }
-    
+
     /**
      * Get current storage usage in bytes
      */
@@ -172,7 +172,7 @@ class Tenant extends Model
     {
         return $this->documents()->sum('size');
     }
-    
+
     /**
      * Alias for getStorageUsage() for compatibility
      */
@@ -180,7 +180,7 @@ class Tenant extends Model
     {
         return $this->getStorageUsage();
     }
-    
+
     /**
      * Get storage usage percentage
      */
@@ -188,14 +188,14 @@ class Tenant extends Model
     {
         $maxStorage = $this->max_storage_gb * 1024 * 1024 * 1024;
         $currentUsage = $this->getStorageUsage();
-        
+
         if ($maxStorage == 0) {
             return 0;
         }
-        
+
         return round(($currentUsage / $maxStorage) * 100, 2);
     }
-    
+
     /**
      * Check if storage quota is exceeded
      */
@@ -203,7 +203,7 @@ class Tenant extends Model
     {
         return $this->getStorageUsage() >= ($this->max_storage_gb * 1024 * 1024 * 1024);
     }
-    
+
     /**
      * Get available storage in bytes
      */
@@ -211,10 +211,10 @@ class Tenant extends Model
     {
         $maxStorage = $this->max_storage_gb * 1024 * 1024 * 1024;
         $currentUsage = $this->getStorageUsage();
-        
+
         return max(0, $maxStorage - $currentUsage);
     }
-    
+
     /**
      * Check if user limit is reached
      */
@@ -222,23 +222,23 @@ class Tenant extends Model
     {
         return $this->users()->count() >= $this->max_users;
     }
-    
+
     /**
      * Check if subscription is active
      */
     public function isSubscriptionActive(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
-        
+
         if ($this->subscription_expires_at && $this->subscription_expires_at->isPast()) {
             return false;
         }
-        
+
         return true;
     }
-    
+
     /**
      * Get plan limits
      */
@@ -251,7 +251,7 @@ class Tenant extends Model
             'features' => $this->features,
         ];
     }
-    
+
     /**
      * Update settings
      */
@@ -259,9 +259,10 @@ class Tenant extends Model
     {
         $currentSettings = $this->settings ?? [];
         $this->settings = array_merge($currentSettings, $settings);
+
         return $this->save();
     }
-    
+
     /**
      * Get a specific setting
      */

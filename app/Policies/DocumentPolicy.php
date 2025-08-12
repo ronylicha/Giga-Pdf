@@ -25,7 +25,7 @@ class DocumentPolicy
     public function view(User $user, Document $document): bool
     {
         // User can view if they own it or are admin
-        return $user->id === $document->user_id || 
+        return $user->id === $document->user_id ||
                $user->hasRole(['tenant-admin', 'manager']) ||
                $user->isSuperAdmin();
     }
@@ -89,7 +89,7 @@ class DocumentPolicy
     public function download(User $user, Document $document): bool
     {
         // User can download if they own it or have view permission
-        return $user->id === $document->user_id || 
+        return $user->id === $document->user_id ||
                $user->hasRole(['tenant-admin', 'manager', 'editor', 'viewer']) ||
                $user->isSuperAdmin();
     }

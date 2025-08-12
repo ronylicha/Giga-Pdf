@@ -2,15 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Share;
 use App\Models\Document;
+use App\Models\Share;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
-use Symfony\Component\HttpFoundation\Response;
 
 class ShareController extends Controller
 {
@@ -41,7 +40,7 @@ class ShareController extends Controller
 
         return Inertia::render('Shares/Index', [
             'shares' => $shares,
-            'filters' => $request->only(['type', 'active', 'search'])
+            'filters' => $request->only(['type', 'active', 'search']),
         ]);
     }
 
@@ -55,18 +54,18 @@ class ShareController extends Controller
             ->firstOrFail();
 
         // Check if share is active and not expired
-        if (!$share->isActive()) {
+        if (! $share->isActive()) {
             abort(403, 'This share link has expired or been revoked.');
         }
 
         // Check if password protected and not verified
         if ($share->isProtected()) {
             $sessionKey = 'share_access_' . $token;
-            
-            if (!session()->has($sessionKey)) {
+
+            if (! session()->has($sessionKey)) {
                 return Inertia::render('Shares/PasswordPrompt', [
                     'token' => $token,
-                    'documentName' => $share->document->original_name
+                    'documentName' => $share->document->original_name,
                 ]);
             }
         }
@@ -75,7 +74,7 @@ class ShareController extends Controller
         $share->recordAccess($request->ip(), $request->userAgent());
 
         // Check if user can view
-        if (!$share->canView()) {
+        if (! $share->canView()) {
             abort(403, 'You do not have permission to view this document.');
         }
 
@@ -88,7 +87,7 @@ class ShareController extends Controller
             'documentUrl' => $documentUrl,
             'canDownload' => $share->canDownload(),
             'canComment' => $share->canComment(),
-            'sharedBy' => $share->sharer->name
+            'sharedBy' => $share->sharer->name,
         ]);
     }
 
@@ -99,32 +98,32 @@ class ShareController extends Controller
     {
         // Rate limiting to prevent brute force
         $key = 'share-verify:' . $token . ':' . $request->ip();
-        
+
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
             abort(429, "Too many attempts. Please try again in {$seconds} seconds.");
         }
 
         $request->validate([
-            'password' => 'required|string'
+            'password' => 'required|string',
         ]);
 
         $share = Share::where('token', $token)->firstOrFail();
 
-        if (!$share->isActive()) {
+        if (! $share->isActive()) {
             abort(403, 'This share link has expired or been revoked.');
         }
 
-        if (!$share->isProtected()) {
+        if (! $share->isProtected()) {
             return redirect()->route('share.show', $token);
         }
 
         // Verify password
-        if (!Hash::check($request->password, $share->password)) {
+        if (! Hash::check($request->password, $share->password)) {
             RateLimiter::hit($key, 60);
-            
+
             return back()->withErrors([
-                'password' => 'The password is incorrect.'
+                'password' => 'The password is incorrect.',
             ]);
         }
 
@@ -140,7 +139,7 @@ class ShareController extends Controller
             ->performedOn($share)
             ->withProperties([
                 'ip' => $request->ip(),
-                'user_agent' => $request->userAgent()
+                'user_agent' => $request->userAgent(),
             ])
             ->log('Password verified for protected share');
 
@@ -157,17 +156,17 @@ class ShareController extends Controller
             ->firstOrFail();
 
         // Check if share is active
-        if (!$share->isActive()) {
+        if (! $share->isActive()) {
             abort(403, 'This share link has expired or been revoked.');
         }
 
         // Check if password protected
-        if ($share->isProtected() && !session()->has('share_access_' . $token)) {
+        if ($share->isProtected() && ! session()->has('share_access_' . $token)) {
             return redirect()->route('share.show', $token);
         }
 
         // Check download permission
-        if (!$share->canDownload()) {
+        if (! $share->canDownload()) {
             abort(403, 'You do not have permission to download this document.');
         }
 
@@ -179,14 +178,14 @@ class ShareController extends Controller
             ->performedOn($share->document)
             ->withProperties([
                 'share_id' => $share->id,
-                'ip' => $request->ip()
+                'ip' => $request->ip(),
             ])
             ->log('Document downloaded via share link');
 
         // Return file download
         $path = $share->document->stored_name;
-        
-        if (!Storage::exists($path)) {
+
+        if (! Storage::exists($path)) {
             abort(404, 'File not found.');
         }
 
@@ -197,7 +196,7 @@ class ShareController extends Controller
                 'Content-Type' => $share->document->mime_type,
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
                 'Pragma' => 'no-cache',
-                'Expires' => '0'
+                'Expires' => '0',
             ]
         );
     }
@@ -217,7 +216,7 @@ class ShareController extends Controller
             'permissions.*' => 'in:view,download,edit,comment',
             'expires_at' => 'nullable|date|after:now',
             'password' => 'nullable|string|min:6',
-            'message' => 'nullable|string|max:500'
+            'message' => 'nullable|string|max:500',
         ]);
 
         // Update permissions
@@ -294,7 +293,7 @@ class ShareController extends Controller
             'created_at' => $share->created_at,
             'expires_at' => $share->expires_at,
             'is_active' => $share->is_active,
-            'type' => $share->type
+            'type' => $share->type,
         ];
 
         return response()->json($stats);
@@ -311,7 +310,7 @@ class ShareController extends Controller
         }
 
         $validated = $request->validate([
-            'days' => 'required|integer|min:1|max:365'
+            'days' => 'required|integer|min:1|max:365',
         ]);
 
         $share->extendExpiration($validated['days']);
@@ -343,11 +342,11 @@ class ShareController extends Controller
             'expires_at' => 'nullable|date|after:now',
             'permissions' => 'nullable|array',
             'permissions.*' => 'in:view,download,edit,comment',
-            'message' => 'nullable|string|max:500'
+            'message' => 'nullable|string|max:500',
         ]);
 
         // Set default permissions
-        if (!isset($validated['permissions'])) {
+        if (! isset($validated['permissions'])) {
             $validated['permissions'] = ['view', 'download'];
         }
 
@@ -360,7 +359,7 @@ class ShareController extends Controller
             'permissions' => $validated['permissions'],
             'password' => isset($validated['password']) ? Hash::make($validated['password']) : null,
             'expires_at' => $validated['expires_at'] ?? null,
-            'message' => $validated['message'] ?? null
+            'message' => $validated['message'] ?? null,
         ]);
 
         // Log share creation
@@ -369,7 +368,7 @@ class ShareController extends Controller
             ->causedBy(Auth::user())
             ->withProperties([
                 'share_id' => $share->id,
-                'type' => $share->type
+                'type' => $share->type,
             ])
             ->log('Document shared');
 
@@ -381,7 +380,7 @@ class ShareController extends Controller
         return response()->json([
             'share' => $share,
             'url' => $share->getShareUrl(),
-            'message' => 'Document shared successfully.'
+            'message' => 'Document shared successfully.',
         ]);
     }
 
@@ -395,7 +394,7 @@ class ShareController extends Controller
             $document->stored_name,
             now()->addHours(1),
             [
-                'ResponseContentDisposition' => 'inline; filename="' . $document->original_name . '"'
+                'ResponseContentDisposition' => 'inline; filename="' . $document->original_name . '"',
             ]
         );
     }

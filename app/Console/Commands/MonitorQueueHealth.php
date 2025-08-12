@@ -3,9 +3,9 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
 use Laravel\Horizon\Contracts\WorkloadRepository;
@@ -37,26 +37,26 @@ class MonitorQueueHealth extends Command
     public function handle()
     {
         $this->info('Monitoring queue health...');
-        
+
         // Get queue statistics
         $queues = $this->getQueueStatistics();
         $failedJobs = $this->getFailedJobs();
         $horizonStatus = $this->checkHorizonStatus();
-        
+
         // Display queue statistics
         $this->displayQueueStatistics($queues, $failedJobs, $horizonStatus);
-        
+
         // Check for issues
         $issues = $this->detectIssues($queues, $failedJobs, $horizonStatus);
-        
-        if (!empty($issues)) {
+
+        if (! empty($issues)) {
             $this->displayIssues($issues);
-            
+
             // Send alerts if requested
             if ($this->option('alert')) {
                 $this->sendAlerts($issues);
             }
-            
+
             // Restart workers if requested and needed
             if ($this->option('restart') && $this->shouldRestartWorkers($issues)) {
                 $this->restartWorkers();
@@ -64,12 +64,12 @@ class MonitorQueueHealth extends Command
         } else {
             $this->info('✅ All queues are healthy!');
         }
-        
+
         // Clear old failed jobs if requested
         if ($this->option('clear-failed')) {
             $this->clearOldFailedJobs();
         }
-        
+
         return Command::SUCCESS;
     }
 
@@ -80,21 +80,21 @@ class MonitorQueueHealth extends Command
     {
         $queueName = $this->option('queue');
         $connection = config('queue.default');
-        
+
         $stats = [];
-        
+
         // Get queue names
-        $queues = $queueName 
-            ? [$queueName] 
+        $queues = $queueName
+            ? [$queueName]
             : ['high', 'default', 'low', 'notifications'];
-        
+
         foreach ($queues as $queue) {
             $pendingJobs = $this->getQueueSize($connection, $queue);
             $processingJobs = $this->getProcessingJobs($queue);
             $processedToday = $this->getProcessedToday($queue);
             $avgProcessingTime = $this->getAverageProcessingTime($queue);
             $failureRate = $this->getFailureRate($queue);
-            
+
             $stats[] = [
                 'queue' => $queue,
                 'pending' => $pendingJobs,
@@ -105,7 +105,7 @@ class MonitorQueueHealth extends Command
                 'status' => $this->getQueueStatus($pendingJobs, $processingJobs, $failureRate),
             ];
         }
-        
+
         return $stats;
     }
 
@@ -117,6 +117,7 @@ class MonitorQueueHealth extends Command
         if ($connection === 'redis') {
             try {
                 $redis = app('redis.connection');
+
                 return $redis->llen("queues:{$queue}");
             } catch (\Exception $e) {
                 return 0;
@@ -127,7 +128,7 @@ class MonitorQueueHealth extends Command
                 ->whereNull('reserved_at')
                 ->count();
         }
-        
+
         return 0;
     }
 
@@ -137,25 +138,26 @@ class MonitorQueueHealth extends Command
     private function getProcessingJobs(string $queue): int
     {
         $connection = config('queue.default');
-        
+
         if ($connection === 'database') {
             return DB::table('jobs')
                 ->where('queue', $queue)
                 ->whereNotNull('reserved_at')
                 ->count();
         }
-        
+
         // For Redis, check Horizon metrics if available
         try {
             if (class_exists(WorkloadRepository::class)) {
                 $workload = app(WorkloadRepository::class);
                 $data = $workload->get();
+
                 return $data[$queue]['length'] ?? 0;
             }
         } catch (\Exception $e) {
             // Horizon not available
         }
-        
+
         return 0;
     }
 
@@ -165,6 +167,7 @@ class MonitorQueueHealth extends Command
     private function getProcessedToday(string $queue): int
     {
         $cacheKey = "queue_processed_{$queue}_" . now()->format('Y-m-d');
+
         return Cache::get($cacheKey, 0);
     }
 
@@ -178,20 +181,21 @@ class MonitorQueueHealth extends Command
             if (class_exists(MetricsRepository::class)) {
                 $metrics = app(MetricsRepository::class);
                 $jobMetrics = $metrics->jobsProcessedPerMinute();
-                
+
                 if (isset($jobMetrics[$queue])) {
                     $avgTime = array_sum($jobMetrics[$queue]) / count($jobMetrics[$queue]);
+
                     return round($avgTime, 2) . 's';
                 }
             }
         } catch (\Exception $e) {
             // Horizon not available
         }
-        
+
         // Fallback to cache-based calculation
         $cacheKey = "queue_avg_time_{$queue}";
         $avgTime = Cache::get($cacheKey, 0);
-        
+
         return $avgTime > 0 ? round($avgTime, 2) . 's' : 'N/A';
     }
 
@@ -205,11 +209,11 @@ class MonitorQueueHealth extends Command
             ->where('queue', $queue)
             ->whereDate('failed_at', today())
             ->count();
-        
+
         if ($processedToday === 0) {
             return 0;
         }
-        
+
         return round(($failedToday / ($processedToday + $failedToday)) * 100, 2);
     }
 
@@ -242,7 +246,7 @@ class MonitorQueueHealth extends Command
             ->select('queue', DB::raw('count(*) as count'), DB::raw('MAX(failed_at) as last_failure'))
             ->groupBy('queue')
             ->get();
-        
+
         return $failedJobs->map(function ($job) {
             return [
                 'queue' => $job->queue,
@@ -263,18 +267,18 @@ class MonitorQueueHealth extends Command
             'paused' => false,
             'supervisors' => 0,
         ];
-        
+
         if ($status['installed']) {
             try {
                 $masters = app(MasterSupervisorRepository::class)->all();
-                $status['running'] = !empty($masters);
+                $status['running'] = ! empty($masters);
                 $status['supervisors'] = count($masters);
                 $status['paused'] = \Laravel\Horizon\Horizon::$paused ?? false;
             } catch (\Exception $e) {
                 // Horizon not properly configured
             }
         }
-        
+
         return $status;
     }
 
@@ -298,12 +302,12 @@ class MonitorQueueHealth extends Command
         } else {
             $this->warn('  Horizon not installed (using basic queue workers)');
         }
-        
+
         $this->newLine();
-        
+
         // Display queue statistics
         $this->info('Queue Statistics:');
-        
+
         switch ($this->option('format')) {
             case 'json':
                 $this->line(json_encode([
@@ -311,12 +315,14 @@ class MonitorQueueHealth extends Command
                     'failed_jobs' => $failedJobs,
                     'horizon' => $horizonStatus,
                 ], JSON_PRETTY_PRINT));
+
                 break;
-                
+
             case 'csv':
                 $this->outputCsv($queues);
+
                 break;
-                
+
             default:
                 $this->table(
                     ['Queue', 'Pending', 'Processing', 'Processed Today', 'Avg Time', 'Failure Rate', 'Status'],
@@ -333,9 +339,9 @@ class MonitorQueueHealth extends Command
                     }, $queues)
                 );
         }
-        
+
         // Display failed jobs
-        if (!empty($failedJobs)) {
+        if (! empty($failedJobs)) {
             $this->newLine();
             $this->warn('Failed Jobs:');
             $this->table(
@@ -357,16 +363,16 @@ class MonitorQueueHealth extends Command
     private function detectIssues(array $queues, array $failedJobs, array $horizonStatus): array
     {
         $issues = [];
-        
+
         // Check Horizon status
-        if ($horizonStatus['installed'] && !$horizonStatus['running']) {
+        if ($horizonStatus['installed'] && ! $horizonStatus['running']) {
             $issues[] = [
                 'type' => 'horizon_down',
                 'severity' => 'critical',
                 'message' => 'Horizon is not running',
             ];
         }
-        
+
         if ($horizonStatus['paused']) {
             $issues[] = [
                 'type' => 'horizon_paused',
@@ -374,7 +380,7 @@ class MonitorQueueHealth extends Command
                 'message' => 'Horizon is paused',
             ];
         }
-        
+
         // Check queue issues
         foreach ($queues as $queue) {
             if ($queue['pending'] > 1000) {
@@ -390,7 +396,7 @@ class MonitorQueueHealth extends Command
                     'message' => "Queue '{$queue['queue']}' has high load ({$queue['pending']} pending)",
                 ];
             }
-            
+
             if ($queue['processing'] === 0 && $queue['pending'] > 0) {
                 $issues[] = [
                     'type' => 'queue_stalled',
@@ -398,7 +404,7 @@ class MonitorQueueHealth extends Command
                     'message' => "Queue '{$queue['queue']}' appears to be stalled",
                 ];
             }
-            
+
             if ($queue['failure_rate'] > 10) {
                 $issues[] = [
                     'type' => 'high_failure_rate',
@@ -413,7 +419,7 @@ class MonitorQueueHealth extends Command
                 ];
             }
         }
-        
+
         // Check failed jobs
         $totalFailed = array_sum(array_column($failedJobs, 'count'));
         if ($totalFailed > 100) {
@@ -423,7 +429,7 @@ class MonitorQueueHealth extends Command
                 'message' => "There are {$totalFailed} failed jobs",
             ];
         }
-        
+
         return $issues;
     }
 
@@ -434,11 +440,11 @@ class MonitorQueueHealth extends Command
     {
         $this->newLine();
         $this->error('🚨 Issues Detected:');
-        
+
         foreach ($issues as $issue) {
             $icon = $issue['severity'] === 'critical' ? '❌' : '⚠️';
             $color = $issue['severity'] === 'critical' ? 'red' : 'yellow';
-            
+
             $this->line("  {$icon} <fg={$color}>{$issue['message']}</>");
         }
     }
@@ -449,13 +455,13 @@ class MonitorQueueHealth extends Command
     private function shouldRestartWorkers(array $issues): bool
     {
         $criticalTypes = ['horizon_down', 'queue_stalled'];
-        
+
         foreach ($issues as $issue) {
             if (in_array($issue['type'], $criticalTypes)) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -465,7 +471,7 @@ class MonitorQueueHealth extends Command
     private function restartWorkers(): void
     {
         $this->info('Restarting queue workers...');
-        
+
         // Restart Horizon if installed
         if (class_exists(\Laravel\Horizon\Horizon::class)) {
             Artisan::call('horizon:terminate');
@@ -475,10 +481,10 @@ class MonitorQueueHealth extends Command
             Artisan::call('queue:restart');
             $this->line('  Queue restart signal sent.');
         }
-        
+
         // Clear cache to reset metrics
         Cache::forget('queue:restart');
-        
+
         $this->info('✅ Workers restarted successfully.');
     }
 
@@ -488,11 +494,11 @@ class MonitorQueueHealth extends Command
     private function clearOldFailedJobs(): void
     {
         $cutoff = now()->subDays(7);
-        
+
         $deleted = DB::table('failed_jobs')
             ->where('failed_at', '<', $cutoff)
             ->delete();
-        
+
         if ($deleted > 0) {
             $this->info("✅ Cleared {$deleted} failed jobs older than 7 days.");
         } else {
@@ -511,10 +517,10 @@ class MonitorQueueHealth extends Command
                 ->withProperties($issue)
                 ->log('Queue health alert: ' . $issue['message']);
         }
-        
+
         // TODO: Send email/Slack notifications
         // Mail::to(config('mail.admin'))->send(new QueueHealthAlert($issues));
-        
+
         $this->info('Alerts logged for ' . count($issues) . ' issues.');
     }
 
@@ -524,7 +530,7 @@ class MonitorQueueHealth extends Command
     private function outputCsv(array $data): void
     {
         $this->line('Queue,Pending,Processing,ProcessedToday,AvgTime,FailureRate,Status');
-        
+
         foreach ($data as $row) {
             $this->line(implode(',', [
                 $row['queue'],

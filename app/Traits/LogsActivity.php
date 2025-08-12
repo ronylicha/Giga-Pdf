@@ -40,6 +40,7 @@ trait LogsActivity
                     ->performedOn($subject)
                     ->withProperties($properties)
                     ->log($description);
+
                 return;
             } catch (\Exception $e) {
                 // Fall back to direct insert

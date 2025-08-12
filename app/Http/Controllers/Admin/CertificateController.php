@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Certificate;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
-use Exception;
 
 class CertificateController extends Controller
 {
@@ -23,7 +23,7 @@ class CertificateController extends Controller
             ->get();
 
         return Inertia::render('Admin/Certificates/Index', [
-            'certificates' => $certificates
+            'certificates' => $certificates,
         ]);
     }
 
@@ -54,7 +54,7 @@ class CertificateController extends Controller
 
         try {
             $tenantId = auth()->user()->tenant_id;
-            
+
             // Reset default if needed
             if ($request->is_default) {
                 Certificate::where('tenant_id', $tenantId)
@@ -81,8 +81,8 @@ class CertificateController extends Controller
     {
         $tenantId = auth()->user()->tenant_id;
         $certDir = storage_path("app/private/certificates/tenant_{$tenantId}");
-        
-        if (!file_exists($certDir)) {
+
+        if (! file_exists($certDir)) {
             mkdir($certDir, 0755, true);
         }
 
@@ -98,7 +98,7 @@ class CertificateController extends Controller
             "organizationName" => $request->organization ?? 'Giga-PDF',
             "organizationalUnitName" => $request->organizational_unit ?? 'IT',
             "commonName" => $request->common_name,
-            "emailAddress" => $request->email ?? 'admin@giga-pdf.local'
+            "emailAddress" => $request->email ?? 'admin@giga-pdf.local',
         ];
 
         // Generate private key
@@ -108,10 +108,10 @@ class CertificateController extends Controller
         ];
 
         $privateKey = openssl_pkey_new($config);
-        
+
         // Generate certificate signing request
         $csr = openssl_csr_new($dn, $privateKey, $config);
-        
+
         // Generate self-signed certificate
         $validityDays = $request->validity_years * 365;
         $certificate = openssl_csr_sign($csr, null, $privateKey, $validityDays);
@@ -126,7 +126,7 @@ class CertificateController extends Controller
 
         // Get certificate info
         $certInfo = openssl_x509_parse($certificate);
-        
+
         // Create database record
         return Certificate::create([
             'tenant_id' => $tenantId,
@@ -160,13 +160,13 @@ class CertificateController extends Controller
     {
         $tenantId = auth()->user()->tenant_id;
         $certDir = storage_path("app/private/certificates/tenant_{$tenantId}");
-        
-        if (!file_exists($certDir)) {
+
+        if (! file_exists($certDir)) {
             mkdir($certDir, 0755, true);
         }
 
         $certId = Str::uuid();
-        
+
         // Store certificate file
         $certificatePath = $request->file('certificate_file')->storeAs(
             "private/certificates/tenant_{$tenantId}",
@@ -234,7 +234,7 @@ class CertificateController extends Controller
     {
         $this->authorize('update', $certificate);
 
-        $certificate->update(['is_active' => !$certificate->is_active]);
+        $certificate->update(['is_active' => ! $certificate->is_active]);
 
         return redirect()->route('admin.certificates.index')
             ->with('success', 'Statut du certificat mis à jour');

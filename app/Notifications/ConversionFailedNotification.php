@@ -38,8 +38,8 @@ class ConversionFailedNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $originalDocument = $this->conversion->document;
-        
-        return (new MailMessage)
+
+        return (new MailMessage())
             ->subject('Document Conversion Failed')
             ->greeting('Hello ' . $notifiable->name . ',')
             ->error()

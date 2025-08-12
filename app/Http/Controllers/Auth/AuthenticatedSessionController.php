@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Http\JsonResponse;
 
 class AuthenticatedSessionController extends Controller
 {
@@ -38,13 +37,13 @@ class AuthenticatedSessionController extends Controller
         if ($user && $user->hasTwoFactorEnabled()) {
             // Store the user ID for 2FA verification
             $userId = $user->id;
-            
+
             // Log out the user but keep the session
             Auth::guard('web')->logout();
-            
+
             // Store 2FA user ID after logout
             session(['2fa_user_id' => $userId]);
-            
+
             // Return Inertia redirect to 2FA challenge page
             return redirect()->route('2fa.challenge');
         }

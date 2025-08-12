@@ -17,7 +17,7 @@ class ImpersonationMiddleware
         if (session()->has('impersonator_id')) {
             view()->share('isImpersonating', true);
             view()->share('impersonatorId', session('impersonator_id'));
-            
+
             // Also share via Inertia
             if (class_exists('\Inertia\Inertia')) {
                 \Inertia\Inertia::share('impersonation', [
@@ -27,7 +27,7 @@ class ImpersonationMiddleware
             }
         } else {
             view()->share('isImpersonating', false);
-            
+
             if (class_exists('\Inertia\Inertia')) {
                 \Inertia\Inertia::share('impersonation', [
                     'active' => false,

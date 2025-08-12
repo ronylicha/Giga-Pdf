@@ -195,6 +195,11 @@ class TwoFactorController extends Controller
         $userId = session('2fa_user_id');
         
         if (!$userId) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Session expired. Please login again.'
+                ], 401);
+            }
             return redirect()->route('login')
                 ->withErrors(['code' => 'Session expired. Please login again.']);
         }
@@ -224,6 +229,11 @@ class TwoFactorController extends Controller
         }
         
         if (!$valid) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'message' => 'Invalid verification code. Please try again.'
+                ], 422);
+            }
             return back()->withErrors([
                 'code' => 'Invalid verification code. Please try again.'
             ]);
@@ -238,6 +248,13 @@ class TwoFactorController extends Controller
         
         // Mark 2FA as verified for this session
         session(['2fa_verified' => true]);
+        
+        if ($request->wantsJson()) {
+            return response()->json([
+                'message' => 'Verification successful',
+                'redirect' => route('dashboard')
+            ]);
+        }
         
         return redirect()->intended(route('dashboard'));
     }

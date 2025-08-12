@@ -4,8 +4,18 @@
 [![Laravel](https://img.shields.io/badge/Laravel-12.x-red.svg)](https://laravel.com)
 [![Vue.js](https://img.shields.io/badge/Vue.js-3.x-green.svg)](https://vuejs.org)
 [![PHP](https://img.shields.io/badge/PHP-8.4+-blue.svg)](https://php.net)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-success.svg)](.github/workflows/ci-cd.yml)
 
 Application web open source complète de gestion, édition et conversion de documents PDF construite avec Laravel 12, incluant un système multi-tenant avec authentification 2FA et interface d'administration avancée.
+
+## 📚 Documentation
+
+- 📖 [Documentation API](API_DOCUMENTATION.md) - Guide complet de l'API REST
+- 🏗️ [Architecture Technique](CLAUDE.md) - Architecture détaillée du projet
+- 🐳 [Guide Docker](docker-compose.yml) - Configuration Docker complète
+- 🔧 [Script d'Installation](install-complete.sh) - Installation automatisée
+- 🚀 [CI/CD Pipeline](.github/workflows/ci-cd.yml) - Intégration continue
 
 ## ✨ Fonctionnalités
 

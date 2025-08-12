@@ -1,0 +1,214 @@
+version: '3.8'
+
+services:
+  # Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gigapdf:latest
+    container_name: gigapdf_app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=${DB_DATABASE:-gigapdf}
+      - DB_USERNAME=${DB_USERNAME:-gigapdf}
+      - DB_PASSWORD=${DB_PASSWORD:-secret}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MAIL_HOST=mailhog
+      - MAIL_PORT=1025
+    volumes:
+      - ./storage:/var/www/html/storage
+      - ./public/uploads:/var/www/html/public/uploads
+    ports:
+      - "8000:80"
+      - "8080:8080"  # Laravel Reverb
+      - "6001:6001"  # Laravel Echo Server (alternative)
+    depends_on:
+      - db
+      - redis
+    networks:
+      - gigapdf
+
+  # Database
+  db:
+    image: mariadb:10.11
+    container_name: gigapdf_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+      MYSQL_DATABASE: ${DB_DATABASE:-gigapdf}
+      MYSQL_USER: ${DB_USERNAME:-gigapdf}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_CHARACTER_SET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"
+    networks:
+      - gigapdf
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-rootsecret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: gigapdf_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - gigapdf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Queue Worker
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gigapdf_queue
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan horizon
+    environment:
+      - APP_ENV=production
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - app
+      - db
+      - redis
+    networks:
+      - gigapdf
+
+  # Scheduler
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gigapdf_scheduler
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: sh -c "while true; do php artisan schedule:run >> /dev/null 2>&1; sleep 60; done"
+    environment:
+      - APP_ENV=production
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    volumes:
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - app
+      - db
+    networks:
+      - gigapdf
+
+  # WebSocket Server (Laravel Reverb)
+  websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gigapdf_websocket
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    environment:
+      - APP_ENV=production
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "8081:8080"
+    depends_on:
+      - app
+      - redis
+    networks:
+      - gigapdf
+
+  # LibreOffice Service for conversions
+  libreoffice:
+    image: linuxserver/libreoffice:latest
+    container_name: gigapdf_libreoffice
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./storage/app/conversions:/conversions
+    ports:
+      - "3000:3000"
+    networks:
+      - gigapdf
+
+  # MailHog (Development mail server)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: gigapdf_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - gigapdf
+
+  # phpMyAdmin (Optional - for database management)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: gigapdf_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USERNAME:-gigapdf}
+      PMA_PASSWORD: ${DB_PASSWORD:-secret}
+      UPLOAD_LIMIT: 100M
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    networks:
+      - gigapdf
+
+  # Nginx Proxy (Optional - for production)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: gigapdf_nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./docker/nginx/nginx.prod.conf:/etc/nginx/nginx.conf
+  #     - ./docker/nginx/ssl:/etc/nginx/ssl
+  #     - ./public:/var/www/html/public
+  #   depends_on:
+  #     - app
+  #   networks:
+  #     - gigapdf
+
+networks:
+  gigapdf:
+    driver: bridge
+
+volumes:
+  db_data:
+    driver: local
+  redis_data:
+    driver: local

@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\ConversionController;
 use App\Http\Controllers\PDFToolsController;
+use App\Http\Controllers\PDFAdvancedController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
@@ -27,9 +28,10 @@ Route::get('/', function () {
 })->name('home');
 
 // Shared document access (public with optional password)
-Route::get('/shared/{share:token}', [ShareController::class, 'show'])->name('share.show');
-Route::post('/shared/{share:token}/verify', [ShareController::class, 'verify'])->name('share.verify');
-Route::get('/shared/{share:token}/download', [ShareController::class, 'download'])->name('share.download');
+Route::get('/shared/{token}', [ShareController::class, 'show'])->name('share.show');
+Route::post('/shared/{token}/verify', [ShareController::class, 'verify'])->name('share.verify');
+Route::get('/shared/{token}/download', [ShareController::class, 'download'])->name('share.download');
+Route::get('/share/{token}', [ShareController::class, 'show'])->name('share.view'); // Alternative URL for Share model getShareUrl()
 
 // Invitation routes (public)
 Route::get('/invitations/{token}', [InvitationController::class, 'show'])->name('invitations.accept');
@@ -137,6 +139,43 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/encrypt', [PDFToolsController::class, 'encrypt'])->name('encrypt');
             Route::get('/ocr', [PDFToolsController::class, 'ocr'])->name('ocr');
             Route::get('/extract', [PDFToolsController::class, 'extract'])->name('extract');
+        });
+        
+        // PDF Advanced Features (requires tenant)
+        Route::middleware(['require.tenant'])->prefix('pdf-advanced')->name('pdf-advanced.')->group(function () {
+            Route::get('/', [PDFAdvancedController::class, 'index'])->name('index');
+            
+            // Digital Signatures
+            Route::post('/documents/{document}/sign', [PDFAdvancedController::class, 'signDocument'])->name('sign');
+            Route::get('/documents/{document}/verify-signature', [PDFAdvancedController::class, 'verifySignature'])->name('verify-signature');
+            Route::post('/certificate/create', [PDFAdvancedController::class, 'createSelfSignedCertificate'])->name('certificate.create');
+            
+            // Redaction
+            Route::post('/documents/{document}/redact', [PDFAdvancedController::class, 'redactDocument'])->name('redact');
+            Route::post('/documents/{document}/redact-sensitive', [PDFAdvancedController::class, 'redactSensitiveData'])->name('redact-sensitive');
+            
+            // PDF Standards
+            Route::post('/documents/{document}/convert-pdfa', [PDFAdvancedController::class, 'convertToPDFA'])->name('convert-pdfa');
+            Route::post('/documents/{document}/convert-pdfx', [PDFAdvancedController::class, 'convertToPDFX'])->name('convert-pdfx');
+            
+            // Comparison
+            Route::post('/compare', [PDFAdvancedController::class, 'compareDocuments'])->name('compare');
+            Route::post('/compare-text', [PDFAdvancedController::class, 'compareText'])->name('compare-text');
+            
+            // Forms
+            Route::post('/documents/{document}/create-form', [PDFAdvancedController::class, 'createForm'])->name('create-form');
+            Route::post('/documents/{document}/fill-form', [PDFAdvancedController::class, 'fillForm'])->name('fill-form');
+            Route::get('/documents/{document}/extract-form-data', [PDFAdvancedController::class, 'extractFormData'])->name('extract-form-data');
+        });
+        
+        // Share management routes (requires tenant)
+        Route::middleware(['require.tenant'])->prefix('shares')->name('shares.')->group(function () {
+            Route::get('/', [ShareController::class, 'index'])->name('index');
+            Route::post('/documents/{document}', [ShareController::class, 'store'])->name('store');
+            Route::put('/{share}', [ShareController::class, 'update'])->name('update');
+            Route::delete('/{share}', [ShareController::class, 'destroy'])->name('destroy');
+            Route::get('/{share}/stats', [ShareController::class, 'stats'])->name('stats');
+            Route::post('/{share}/extend', [ShareController::class, 'extend'])->name('extend');
         });
         
         // Tenant admin routes

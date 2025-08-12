@@ -10,13 +10,26 @@ async function submit() {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch('/two-factor/verify', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, body: JSON.stringify({ code: code.value }) })
-    if (res.redirected) {
-      window.location = res.url
+    const res = await fetch('/two-factor/verify', { 
+      method: 'POST', 
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content 
+      }, 
+      body: JSON.stringify({ code: code.value }) 
+    })
+    
+    if (res.ok) {
+      const data = await res.json()
+      if (data.redirect) {
+        window.location.href = data.redirect
+      }
       return
     }
+    
     const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'Code invalide')
+    throw new Error(data.message || 'Code invalide')
   } catch (e) {
     error.value = e.message
   } finally {

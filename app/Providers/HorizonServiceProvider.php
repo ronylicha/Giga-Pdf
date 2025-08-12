@@ -28,8 +28,20 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     protected function gate(): void
     {
         Gate::define('viewHorizon', function ($user = null) {
+            // Allow access in local environment
+            if (app()->environment('local')) {
+                return true;
+            }
+            
+            // Allow super admins
+            if ($user && $user->hasRole('super-admin')) {
+                return true;
+            }
+            
+            // Allow specific emails
             return in_array(optional($user)->email, [
-                //
+                'admin@gigapdf.com',
+                // Add more admin emails here
             ]);
         });
     }

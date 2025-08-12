@@ -564,3 +564,20 @@ php artisan monitor:storage-usage
 - Workflow automation
 - Intégrations tierces (Google Drive, Dropbox)
 - White-labeling complet
+
+## Règles Techniques Importantes
+
+### PDF.js et Frameworks Réactifs
+**RÈGLE CRITIQUE**: Lors de l'utilisation de PDF.js avec Vue.js, Alpine.js ou tout autre framework réactif, NE JAMAIS stocker les instances PDF dans des propriétés réactives (ref, reactive, data). Les frameworks réactifs transforment les objets en Proxies pour la réactivité, ce qui casse les objets PDF.js.
+
+Toujours stocker les instances PDF.js comme variables normales en dehors du système de réactivité :
+
+```javascript
+// ✅ BON - Variable normale
+let pdfInstance = null;
+
+// ❌ MAUVAIS - Propriété réactive
+const pdfInstance = ref(null);
+```
+
+Cette règle s'applique à tous les objets complexes de bibliothèques tierces (PDF.js, Canvas, WebGL, etc.) qui ne sont pas conçus pour la réactivité.

@@ -119,12 +119,42 @@ onMounted(() => {
                                             Chiffrer PDF
                                         </DropdownLink>
                                         
+                                        <DropdownLink :href="route('tools.decrypt')">
+                                            🔓 Déverrouiller PDF
+                                        </DropdownLink>
+                                        
                                         <DropdownLink :href="route('tools.ocr')">
                                             OCR (Texte)
                                         </DropdownLink>
                                         
                                         <DropdownLink :href="route('tools.extract')">
                                             Extraire Pages
+                                        </DropdownLink>
+                                        
+                                        <div class="border-t border-gray-200 dark:border-gray-600 my-1"></div>
+                                        
+                                        <div class="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                            Avancé
+                                        </div>
+                                        
+                                        <DropdownLink :href="route('pdf-advanced.signatures')">
+                                            🔏 Signatures Numériques
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('pdf-advanced.redact')">
+                                            🔒 Rédaction Sécurisée
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('pdf-advanced.standards')">
+                                            📋 PDF/A & PDF/X
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('pdf-advanced.compare')">
+                                            🔍 Comparer Documents
+                                        </DropdownLink>
+                                        
+                                        <DropdownLink :href="route('pdf-advanced.forms')">
+                                            📝 Formulaires PDF
                                         </DropdownLink>
                                     </template>
                                 </Dropdown>
@@ -193,6 +223,12 @@ onMounted(() => {
                                         
                                         <DropdownLink :href="route('tenant.storage')">
                                             Stockage
+                                        </DropdownLink>
+                                        
+                                        <div class="border-t border-gray-200 dark:border-gray-600"></div>
+                                        
+                                        <DropdownLink :href="route('admin.certificates.index')">
+                                            🔐 Certificats
                                         </DropdownLink>
                                     </template>
                                 </Dropdown>
@@ -354,8 +390,18 @@ onMounted(() => {
                         <ResponsiveNavLink :href="route('tools.compress')">Compresser</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tools.watermark')">Filigrane</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tools.encrypt')">Chiffrer PDF</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('tools.decrypt')">🔓 Déverrouiller PDF</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tools.ocr')">OCR (Texte)</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tools.extract')">Extraire Pages</ResponsiveNavLink>
+                        
+                        <div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                            <div class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Outils Avancés</div>
+                            <ResponsiveNavLink :href="route('pdf-advanced.signatures')">🔏 Signatures Numériques</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('pdf-advanced.redact')">🔒 Rédaction Sécurisée</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('pdf-advanced.standards')">📋 PDF/A & PDF/X</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('pdf-advanced.compare')">🔍 Comparer Documents</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('pdf-advanced.forms')">📝 Formulaires PDF</ResponsiveNavLink>
+                        </div>
                     </div>
                     
                     <!-- Super Admin Section -->
@@ -377,6 +423,7 @@ onMounted(() => {
                         <ResponsiveNavLink :href="route('tenant.users.index')">Utilisateurs</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tenant.activity')">Journal d'activité</ResponsiveNavLink>
                         <ResponsiveNavLink :href="route('tenant.storage')">Gestion stockage</ResponsiveNavLink>
+                        <ResponsiveNavLink :href="route('admin.certificates.index')">🔐 Certificats</ResponsiveNavLink>
                     </div>
 
                     <!-- Responsive Settings Options -->

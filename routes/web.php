@@ -118,6 +118,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{document}/ocr', [DocumentController::class, 'ocr'])->name('ocr');
             Route::post('/{document}/watermark', [DocumentController::class, 'addWatermark'])->name('watermark');
             Route::post('/{document}/encrypt', [DocumentController::class, 'encrypt'])->name('encrypt');
+            Route::post('/{document}/decrypt', [DocumentController::class, 'decrypt'])->name('decrypt');
         });
         
         // Conversions (requires tenant)
@@ -137,6 +138,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/compress', [PDFToolsController::class, 'compress'])->name('compress');
             Route::get('/watermark', [PDFToolsController::class, 'watermark'])->name('watermark');
             Route::get('/encrypt', [PDFToolsController::class, 'encrypt'])->name('encrypt');
+            Route::get('/decrypt', [PDFToolsController::class, 'decrypt'])->name('decrypt');
             Route::get('/ocr', [PDFToolsController::class, 'ocr'])->name('ocr');
             Route::get('/extract', [PDFToolsController::class, 'extract'])->name('extract');
         });
@@ -145,21 +147,29 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::middleware(['require.tenant'])->prefix('pdf-advanced')->name('pdf-advanced.')->group(function () {
             Route::get('/', [PDFAdvancedController::class, 'index'])->name('index');
             
+            // Pages principales pour chaque outil
+            Route::get('/signatures', [PDFAdvancedController::class, 'signaturesPage'])->name('signatures');
+            Route::get('/redact', [PDFAdvancedController::class, 'redactPage'])->name('redact');
+            Route::get('/standards', [PDFAdvancedController::class, 'standardsPage'])->name('standards');
+            Route::get('/compare', [PDFAdvancedController::class, 'comparePage'])->name('compare');
+            Route::get('/forms', [PDFAdvancedController::class, 'formsPage'])->name('forms');
+            
             // Digital Signatures
             Route::post('/documents/{document}/sign', [PDFAdvancedController::class, 'signDocument'])->name('sign');
             Route::get('/documents/{document}/verify-signature', [PDFAdvancedController::class, 'verifySignature'])->name('verify-signature');
             Route::post('/certificate/create', [PDFAdvancedController::class, 'createSelfSignedCertificate'])->name('certificate.create');
             
             // Redaction
-            Route::post('/documents/{document}/redact', [PDFAdvancedController::class, 'redactDocument'])->name('redact');
+            Route::post('/documents/{document}/redact', [PDFAdvancedController::class, 'redactDocument'])->name('redact-action');
             Route::post('/documents/{document}/redact-sensitive', [PDFAdvancedController::class, 'redactSensitiveData'])->name('redact-sensitive');
+            Route::post('/documents/{document}/redact-keywords', [PDFAdvancedController::class, 'redactByKeywords'])->name('redact-keywords');
             
             // PDF Standards
             Route::post('/documents/{document}/convert-pdfa', [PDFAdvancedController::class, 'convertToPDFA'])->name('convert-pdfa');
             Route::post('/documents/{document}/convert-pdfx', [PDFAdvancedController::class, 'convertToPDFX'])->name('convert-pdfx');
             
             // Comparison
-            Route::post('/compare', [PDFAdvancedController::class, 'compareDocuments'])->name('compare');
+            Route::post('/compare', [PDFAdvancedController::class, 'compareDocuments'])->name('compare-action');
             Route::post('/compare-text', [PDFAdvancedController::class, 'compareText'])->name('compare-text');
             
             // Forms
@@ -242,6 +252,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
             // Storage management
             Route::get('/storage', [AdminDashboardController::class, 'storage'])->name('storage');
             Route::post('/storage/cleanup', [AdminDashboardController::class, 'cleanupStorage'])->name('storage.cleanup');
+            
+            // Certificates management
+            Route::prefix('certificates')->name('certificates.')->group(function () {
+                Route::get('/', [App\Http\Controllers\Admin\CertificateController::class, 'index'])->name('index');
+                Route::post('/', [App\Http\Controllers\Admin\CertificateController::class, 'store'])->name('store');
+                Route::post('/{certificate}/set-default', [App\Http\Controllers\Admin\CertificateController::class, 'setDefault'])->name('set-default');
+                Route::post('/{certificate}/toggle', [App\Http\Controllers\Admin\CertificateController::class, 'toggle'])->name('toggle');
+                Route::delete('/{certificate}', [App\Http\Controllers\Admin\CertificateController::class, 'destroy'])->name('destroy');
+            });
         });
         
         // Tenant management routes (only for super-admin)

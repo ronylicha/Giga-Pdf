@@ -20,15 +20,16 @@ class PDFComparisonService
         array $options = []
     ): array {
         try {
+            // Increase memory limit temporarily for this operation
+            $oldMemoryLimit = ini_get('memory_limit');
+            ini_set('memory_limit', '1024M'); // 1GB memory limit
+            
             $path1 = Storage::path($document1->stored_name);
             $path2 = Storage::path($document2->stored_name);
             
-            // Convert PDFs to images for comparison
-            $images1 = $this->pdfToImages($path1);
-            $images2 = $this->pdfToImages($path2);
-            
-            $pageCount1 = count($images1);
-            $pageCount2 = count($images2);
+            // Get page counts without loading all images
+            $pageCount1 = $this->getPdfPageCount($path1);
+            $pageCount2 = $this->getPdfPageCount($path2);
             $maxPages = max($pageCount1, $pageCount2);
             
             $comparisonResults = [
@@ -51,33 +52,35 @@ class PDFComparisonService
             $totalSimilarity = 0;
             $comparedPages = 0;
             
-            // Compare each page
+            // Compare each page one by one without loading all in memory
             for ($i = 0; $i < $maxPages; $i++) {
                 $pageNum = $i + 1;
                 
-                if ($i >= $pageCount1) {
+                if ($pageNum > $pageCount1) {
                     // Page exists only in document 2
                     $comparisonResults['differences'][] = [
                         'page' => $pageNum,
                         'type' => 'page_added',
                         'description' => "Page $pageNum exists only in second document",
                         'similarity' => 0,
+                        'has_differences' => true,
                     ];
                     $comparisonResults['has_differences'] = true;
-                } elseif ($i >= $pageCount2) {
+                } elseif ($pageNum > $pageCount2) {
                     // Page exists only in document 1
                     $comparisonResults['differences'][] = [
                         'page' => $pageNum,
                         'type' => 'page_removed',
                         'description' => "Page $pageNum exists only in first document",
                         'similarity' => 0,
+                        'has_differences' => true,
                     ];
                     $comparisonResults['has_differences'] = true;
                 } else {
-                    // Compare the pages
-                    $pageComparison = $this->comparePages(
-                        $images1[$i],
-                        $images2[$i],
+                    // Compare single page at a time
+                    $pageComparison = $this->compareSinglePage(
+                        $path1,
+                        $path2,
                         $pageNum,
                         $options
                     );
@@ -89,6 +92,9 @@ class PDFComparisonService
                     
                     $totalSimilarity += $pageComparison['similarity'];
                     $comparedPages++;
+                    
+                    // Free memory after each page
+                    gc_collect_cycles();
                 }
             }
             
@@ -97,29 +103,183 @@ class PDFComparisonService
                 $comparisonResults['similarity_percentage'] = round($totalSimilarity / $comparedPages, 2);
             }
             
-            // Generate difference document if requested
-            if ($options['generate_diff_pdf'] ?? false) {
-                $diffDocument = $this->generateDiffPDF(
-                    $document1,
-                    $document2,
-                    $comparisonResults,
-                    $options
-                );
-                $comparisonResults['diff_document_id'] = $diffDocument->id;
-            }
-            
-            // Cleanup temporary images
-            foreach (array_merge($images1, $images2) as $imagePath) {
-                if (file_exists($imagePath)) {
-                    unlink($imagePath);
-                }
-            }
+            // Restore original memory limit
+            ini_set('memory_limit', $oldMemoryLimit);
             
             return $comparisonResults;
             
         } catch (Exception $e) {
             throw new Exception('Error comparing PDFs: ' . $e->getMessage());
         }
+    }
+    
+    /**
+     * Get PDF page count without loading all pages
+     */
+    private function getPdfPageCount(string $pdfPath): int
+    {
+        try {
+            $imagick = new Imagick();
+            $imagick->pingImage($pdfPath);
+            $pageCount = $imagick->getNumberImages();
+            $imagick->clear();
+            $imagick->destroy();
+            return $pageCount;
+        } catch (Exception $e) {
+            return 0;
+        }
+    }
+    
+    /**
+     * Compare a single page from two PDFs
+     */
+    private function compareSinglePage(
+        string $pdfPath1,
+        string $pdfPath2,
+        int $pageNum,
+        array $options
+    ): array {
+        $result = [
+            'page' => $pageNum,
+            'type' => 'content_change',
+            'has_differences' => false,
+            'similarity' => 100,
+            'differences_found' => [],
+        ];
+        
+        try {
+            // Load only the specific page from each PDF
+            $image1 = new Imagick();
+            $image1->setResolution(150, 150); // Better quality resolution
+            $image1->readImage($pdfPath1 . '[' . ($pageNum - 1) . ']');
+            $image1->setImageFormat('png');
+            
+            $image2 = new Imagick();
+            $image2->setResolution(150, 150); // Better quality resolution
+            $image2->readImage($pdfPath2 . '[' . ($pageNum - 1) . ']');
+            $image2->setImageFormat('png');
+            
+            // Ensure images have the same dimensions
+            $this->normalizeImageDimensions($image1, $image2);
+            
+            // Quick comparison using mean square error
+            $comparison = $image1->compareImages($image2, Imagick::METRIC_MEANSQUAREERROR);
+            
+            // Calculate similarity percentage
+            $difference = $comparison[1];
+            $similarity = (1 - $difference) * 100;
+            $result['similarity'] = round($similarity, 2);
+            
+            // Determine if there are significant differences
+            $threshold = $options['threshold'] ?? 95;
+            if ($similarity < $threshold) {
+                $result['has_differences'] = true;
+                
+                // Only do detailed analysis if specifically requested
+                if (($options['detailed_analysis'] ?? false) && $similarity < 99) {
+                    // Simplified difference detection
+                    $result['differences_found'] = $this->findSimpleDifferences($image1, $image2);
+                }
+            }
+            
+            $result['description'] = $similarity < $threshold 
+                ? "Page $pageNum has significant differences ({$result['similarity']}% similar)"
+                : "Page $pageNum is identical or nearly identical";
+            
+            // Clean up immediately
+            $image1->clear();
+            $image1->destroy();
+            $image2->clear();
+            $image2->destroy();
+            
+            // Clean up comparison image
+            if (isset($comparison[0])) {
+                $comparison[0]->clear();
+                $comparison[0]->destroy();
+            }
+            
+            // Force garbage collection
+            gc_collect_cycles();
+            
+        } catch (Exception $e) {
+            $result['error'] = $e->getMessage();
+            $result['has_differences'] = true;
+            $result['similarity'] = 0;
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Find simple differences between images (lightweight version)
+     */
+    private function findSimpleDifferences(Imagick $image1, Imagick $image2): array
+    {
+        $differences = [];
+        
+        try {
+            // Use higher resolution for better quality difference detection
+            $width = min($image1->getImageWidth(), 800);
+            $height = min($image1->getImageHeight(), 1200);
+            
+            $image1->thumbnailImage($width, $height);
+            $image2->thumbnailImage($width, $height);
+            
+            // More precise grid-based difference detection
+            $gridSize = 40;
+            $rows = ceil($height / $gridSize);
+            $cols = ceil($width / $gridSize);
+            
+            for ($row = 0; $row < $rows; $row++) {
+                for ($col = 0; $col < $cols; $col++) {
+                    $x = $col * $gridSize;
+                    $y = $row * $gridSize;
+                    
+                    // Compare regions
+                    $region1 = clone $image1;
+                    $region2 = clone $image2;
+                    
+                    $region1->cropImage(
+                        min($gridSize, $width - $x),
+                        min($gridSize, $height - $y),
+                        $x,
+                        $y
+                    );
+                    
+                    $region2->cropImage(
+                        min($gridSize, $width - $x),
+                        min($gridSize, $height - $y),
+                        $x,
+                        $y
+                    );
+                    
+                    $comparison = $region1->compareImages($region2, Imagick::METRIC_MEANSQUAREERROR);
+                    
+                    if ($comparison[1] > 0.01) { // Threshold for difference
+                        // Calculate scale factor based on original vs thumbnail size
+                        $scaleFactor = $image1->getImageWidth() / $width;
+                        
+                        $differences[] = [
+                            'x' => $x * $scaleFactor,
+                            'y' => $y * $scaleFactor,
+                            'width' => $gridSize * $scaleFactor,
+                            'height' => $gridSize * $scaleFactor,
+                            'type' => 'region_difference',
+                        ];
+                    }
+                    
+                    $region1->destroy();
+                    $region2->destroy();
+                    if (isset($comparison[0])) {
+                        $comparison[0]->destroy();
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // Return empty differences on error
+        }
+        
+        return $differences;
     }
     
     /**
@@ -500,6 +660,224 @@ class PDFComparisonService
         ]);
         
         return $comparisonDocument;
+    }
+    
+    /**
+     * Lightweight comparison using text extraction
+     */
+    public function compareLightweight(Document $document1, Document $document2): array
+    {
+        try {
+            $path1 = Storage::path($document1->stored_name);
+            $path2 = Storage::path($document2->stored_name);
+            
+            // Get page counts
+            $pageCount1 = $this->getPdfPageCount($path1);
+            $pageCount2 = $this->getPdfPageCount($path2);
+            
+            $comparisonResults = [
+                'document1' => [
+                    'id' => $document1->id,
+                    'name' => $document1->original_name,
+                    'pages' => $pageCount1,
+                ],
+                'document2' => [
+                    'id' => $document2->id,
+                    'name' => $document2->original_name,
+                    'pages' => $pageCount2,
+                ],
+                'total_pages_compared' => max($pageCount1, $pageCount2),
+                'differences' => [],
+                'similarity_percentage' => 0,
+                'has_differences' => false,
+            ];
+            
+            // Extract text from PDFs using pdftotext command (lightweight)
+            $text1 = $this->extractTextFromPdf($path1);
+            $text2 = $this->extractTextFromPdf($path2);
+            
+            // Calculate similarity
+            similar_text($text1, $text2, $similarity);
+            $comparisonResults['similarity_percentage'] = round($similarity, 2);
+            
+            if ($similarity < 95) {
+                $comparisonResults['has_differences'] = true;
+                
+                // Find differences per page
+                for ($i = 1; $i <= max($pageCount1, $pageCount2); $i++) {
+                    $pageText1 = $this->extractTextFromPage($path1, $i);
+                    $pageText2 = $this->extractTextFromPage($path2, $i);
+                    
+                    if ($pageText1 !== $pageText2) {
+                        similar_text($pageText1, $pageText2, $pageSimilarity);
+                        
+                        $comparisonResults['differences'][] = [
+                            'page' => $i,
+                            'type' => 'text_difference',
+                            'has_differences' => true,
+                            'similarity' => round($pageSimilarity, 2),
+                            'description' => "Page $i has text differences ({$pageSimilarity}% similar)",
+                        ];
+                    }
+                }
+            }
+            
+            return $comparisonResults;
+            
+        } catch (Exception $e) {
+            // Fallback to basic comparison
+            return [
+                'document1' => ['id' => $document1->id, 'name' => $document1->original_name],
+                'document2' => ['id' => $document2->id, 'name' => $document2->original_name],
+                'error' => 'Lightweight comparison failed: ' . $e->getMessage(),
+                'has_differences' => true,
+                'similarity_percentage' => 0,
+            ];
+        }
+    }
+    
+    /**
+     * Compare text content of two PDFs with detailed diff
+     */
+    public function compareTextContent(Document $document1, Document $document2, array $options = []): array
+    {
+        $path1 = Storage::disk('local')->path($document1->stored_name);
+        $path2 = Storage::disk('local')->path($document2->stored_name);
+        
+        try {
+            // Extract text from both PDFs
+            $text1 = $this->extractTextFromPdf($path1);
+            $text2 = $this->extractTextFromPdf($path2);
+            
+            // Split text into lines for line-by-line comparison
+            $lines1 = explode("\n", $text1);
+            $lines2 = explode("\n", $text2);
+            
+            // Calculate differences
+            $additions = [];
+            $deletions = [];
+            $modifications = [];
+            
+            // Use diff algorithm to find changes
+            $maxLines = max(count($lines1), count($lines2));
+            for ($i = 0; $i < $maxLines; $i++) {
+                $line1 = $lines1[$i] ?? '';
+                $line2 = $lines2[$i] ?? '';
+                
+                if ($line1 === $line2) {
+                    continue; // No change
+                }
+                
+                if (empty($line1) && !empty($line2)) {
+                    // Addition
+                    if ($options['show_additions'] ?? true) {
+                        $additions[] = [
+                            'line' => $i + 1,
+                            'content' => $line2
+                        ];
+                    }
+                } elseif (!empty($line1) && empty($line2)) {
+                    // Deletion
+                    if ($options['show_deletions'] ?? true) {
+                        $deletions[] = [
+                            'line' => $i + 1,
+                            'content' => $line1
+                        ];
+                    }
+                } else {
+                    // Modification
+                    if ($options['show_modifications'] ?? true) {
+                        $modifications[] = [
+                            'line' => $i + 1,
+                            'original' => $line1,
+                            'modified' => $line2
+                        ];
+                    }
+                }
+            }
+            
+            // Calculate similarity
+            similar_text($text1, $text2, $similarity);
+            
+            // Prepare result
+            $result = [
+                'document1' => [
+                    'id' => $document1->id,
+                    'name' => $document1->original_name
+                ],
+                'document2' => [
+                    'id' => $document2->id,
+                    'name' => $document2->original_name
+                ],
+                'has_differences' => !empty($additions) || !empty($deletions) || !empty($modifications),
+                'similarity_percentage' => round($similarity, 2),
+                'statistics' => [
+                    'additions' => count($additions),
+                    'deletions' => count($deletions),
+                    'modifications' => count($modifications),
+                    'total_changes' => count($additions) + count($deletions) + count($modifications)
+                ],
+                'differences' => [
+                    'additions' => $additions,
+                    'deletions' => $deletions,
+                    'modifications' => $modifications
+                ],
+                'comparison_type' => 'text'
+            ];
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            throw new Exception('Failed to compare text content: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Extract text from PDF using pdftotext command
+     */
+    private function extractTextFromPdf(string $pdfPath): string
+    {
+        $tempFile = tempnam(sys_get_temp_dir(), 'pdf_text_');
+        $command = sprintf(
+            'pdftotext %s %s 2>/dev/null',
+            escapeshellarg($pdfPath),
+            escapeshellarg($tempFile)
+        );
+        
+        exec($command, $output, $returnCode);
+        
+        if ($returnCode === 0 && file_exists($tempFile)) {
+            $text = file_get_contents($tempFile);
+            unlink($tempFile);
+            return $text;
+        }
+        
+        return '';
+    }
+    
+    /**
+     * Extract text from specific page
+     */
+    private function extractTextFromPage(string $pdfPath, int $pageNum): string
+    {
+        $tempFile = tempnam(sys_get_temp_dir(), 'pdf_page_text_');
+        $command = sprintf(
+            'pdftotext -f %d -l %d %s %s 2>/dev/null',
+            $pageNum,
+            $pageNum,
+            escapeshellarg($pdfPath),
+            escapeshellarg($tempFile)
+        );
+        
+        exec($command, $output, $returnCode);
+        
+        if ($returnCode === 0 && file_exists($tempFile)) {
+            $text = file_get_contents($tempFile);
+            unlink($tempFile);
+            return $text;
+        }
+        
+        return '';
     }
     
     /**

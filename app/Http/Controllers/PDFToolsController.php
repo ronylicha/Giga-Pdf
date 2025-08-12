@@ -64,6 +64,20 @@ class PDFToolsController extends Controller
         ]);
     }
 
+    public function decrypt()
+    {
+        $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+            ->where('user_id', auth()->id())
+            ->where('mime_type', 'application/pdf')
+            ->orderBy('original_name')
+            ->get(['id', 'original_name', 'size', 'mime_type', 'metadata']);
+
+        return Inertia::render('Tools/Decrypt', [
+            'title' => 'Déverrouiller PDF',
+            'documents' => $documents
+        ]);
+    }
+
     public function ocr()
     {
         return Inertia::render('Tools/OCR', [

@@ -1,10 +1,10 @@
 # Multi-stage Docker build for Giga-PDF
 
 # Stage 1: PHP Dependencies
-FROM composer:2.6 AS composer-build
+FROM composer:2.7-php8.3 AS composer-build
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 COPY . .
 RUN composer dump-autoload --optimize
 

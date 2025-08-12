@@ -28,6 +28,10 @@ Application web open source complète de gestion, édition et conversion de docu
 - **Manipulation** : Fusion, division, extraction, rotation et réorganisation de pages
 - **Édition** : Modification de texte, annotations, ajout/suppression de contenu
 - **Sécurité** : Chiffrement, signatures numériques, filigranes, permissions
+- **Suppression de mots de passe** : 
+  - Suppression avec mot de passe connu
+  - **Suppression forcée sans mot de passe** (nouveauté!)
+  - Support de multiples méthodes (qpdf, Ghostscript, Python)
 - **Optimisation** : Compression intelligente, linearisation, suppression de métadonnées
 - **Formulaires** : Création, remplissage automatique, extraction de données
 - **OCR** : Reconnaissance de texte multilingue (12+ langues)
@@ -65,25 +69,47 @@ Application web open source complète de gestion, édition et conversion de docu
 ## 🚀 Installation
 
 ### Prérequis
+
+#### Requis
 - Ubuntu 22.04 LTS ou équivalent
-- PHP 8.4+ avec extensions : gd, imagick, zip, redis, mysqli/pdo_mysql
+- PHP 8.4+ avec extensions : gd, imagick, zip, redis, mysqli/pdo_mysql, mbstring, xml, curl, bcmath
 - MariaDB 10.11+ ou MySQL 8.0+
 - Redis 7+
 - Node.js 18+ et npm
 - Composer 2.x
-- LibreOffice 7+ (pour conversions)
-- Tesseract OCR 5+ (pour OCR)
 
-### Installation Automatique
+#### Recommandés (pour toutes les fonctionnalités)
+- **qpdf** : Suppression de mots de passe PDF (ESSENTIEL)
+- **Ghostscript** : Suppression forcée de mots de passe PDF (ESSENTIEL)
+- **LibreOffice 7+** : Conversions de documents Office
+- **Tesseract OCR 5+** : Reconnaissance de texte OCR
+- **poppler-utils** : Extraction de texte PDF (pdftotext, pdftohtml)
+- **wkhtmltopdf** : Conversion HTML vers PDF
+- **ImageMagick** : Traitement d'images
+- **Python 3 + pip3** : Fonctionnalités PDF avancées
+- **pdftk** : Manipulation PDF alternative
+
+### Installation Automatique (Recommandée)
 
 ```bash
 # Cloner le repository
 git clone https://github.com/ronylicha/Giga-Pdf.git
 cd Giga-Pdf
 
-# Lancer le script d'installation
-./install.sh
+# Lancer le script d'installation complet
+sudo ./install-complete.sh
+
+# Ou utiliser la commande artisan pour une installation guidée
+php artisan gigapdf:install
 ```
+
+Le script d'installation automatique :
+- ✅ Installe toutes les dépendances système
+- ✅ Configure la base de données
+- ✅ Installe les outils PDF (qpdf, ghostscript, etc.)
+- ✅ Configure les permissions
+- ✅ Configure Supervisor pour les queues
+- ✅ Crée le premier tenant et admin
 
 ### Installation Manuelle
 
@@ -93,7 +119,24 @@ git clone https://github.com/ronylicha/Giga-Pdf.git giga-pdf
 cd giga-pdf
 ```
 
-#### 2. Installer les dépendances
+#### 2. Installer les dépendances système
+```bash
+# Outils PDF essentiels pour la suppression de mots de passe
+sudo apt-get update
+sudo apt-get install -y qpdf ghostscript poppler-utils
+
+# Outils PDF optionnels mais recommandés
+sudo apt-get install -y pdftk wkhtmltopdf imagemagick
+
+# OCR et conversion de documents
+sudo apt-get install -y tesseract-ocr tesseract-ocr-fra libreoffice
+
+# Python pour fonctionnalités avancées
+sudo apt-get install -y python3 python3-pip
+sudo pip3 install --break-system-packages pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml
+```
+
+#### 3. Installer les dépendances PHP et JavaScript
 ```bash
 # PHP
 composer install --optimize-autoloader
@@ -103,7 +146,7 @@ npm install
 npm run build
 ```
 
-#### 3. Configuration de l'environnement
+#### 4. Configuration de l'environnement
 ```bash
 # Copier le fichier de configuration
 cp .env.example .env
@@ -138,7 +181,7 @@ MAIL_PASSWORD=votre_password
 MAIL_ENCRYPTION=tls
 ```
 
-#### 4. Installation de la base de données
+#### 5. Installation de la base de données
 ```bash
 # Créer les tables
 php artisan migrate
@@ -146,11 +189,11 @@ php artisan migrate
 # Créer le super admin et les données initiales
 php artisan db:seed --class=ProductionSeeder
 
-# Ou utiliser la commande d'installation complète
-php artisan app:install
+# Ou utiliser la commande d'installation complète Giga-PDF
+php artisan gigapdf:install --force --with-demo
 ```
 
-#### 5. Permissions des dossiers
+#### 6. Permissions des dossiers
 ```bash
 # Définir les permissions appropriées
 chmod -R 755 storage bootstrap/cache
@@ -160,7 +203,7 @@ chown -R www-data:www-data /var/www/html/giga-pdf
 ./fix-permissions-prod.sh
 ```
 
-#### 6. Configuration du serveur web (Nginx)
+#### 7. Configuration du serveur web (Nginx)
 
 Créer `/etc/nginx/sites-available/giga-pdf` :
 ```nginx
@@ -364,6 +407,23 @@ supervisorctl status giga-pdf-reverb
 which libreoffice
 # Test manuel
 libreoffice --headless --convert-to pdf test.docx
+```
+
+#### Problèmes de suppression de mot de passe PDF
+```bash
+# Vérifier que les outils nécessaires sont installés
+which qpdf        # Essentiel pour suppression normale
+which gs          # Essentiel pour suppression forcée
+which python3     # Pour méthodes alternatives
+
+# Installer les outils manquants
+sudo apt-get install -y qpdf ghostscript
+sudo pip3 install --break-system-packages pypdf
+
+# Test manuel de suppression de mot de passe
+qpdf --decrypt --password=motdepasse input.pdf output.pdf  # Avec mot de passe
+qpdf --decrypt input.pdf output.pdf                        # Sans mot de passe (si possible)
+gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=output.pdf input.pdf  # Forcé avec Ghostscript
 ```
 
 ## 🤝 Contribution

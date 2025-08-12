@@ -1057,6 +1057,61 @@ class DocumentController extends Controller
     }
     
     /**
+     * Decrypt PDF (remove password)
+     */
+    public function decrypt(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        if ($document->mime_type !== 'application/pdf') {
+            return back()->with('error', 'Seuls les fichiers PDF peuvent être déverrouillés.');
+        }
+        
+        $request->validate([
+            'password' => 'nullable|string',
+            'force_remove' => 'nullable|boolean',
+        ]);
+        
+        try {
+            // Create password removal service instance
+            $passwordService = app(\App\Services\PDFPasswordRemovalService::class);
+            
+            // Check if document has password
+            if (!$passwordService->hasPassword($document)) {
+                return back()->with('warning', 'Ce document n\'est pas protégé par mot de passe.');
+            }
+            
+            // Remove password
+            $unlockedDocument = $passwordService->removePassword(
+                $document,
+                $request->password,
+                $request->boolean('force_remove')
+            );
+            
+            // Log activity
+            activity()
+                ->performedOn($unlockedDocument)
+                ->causedBy(Auth::user())
+                ->withProperties([
+                    'force_removal' => $request->boolean('force_remove'),
+                    'source_document' => $document->id,
+                ])
+                ->log('PDF password removed');
+            
+            return redirect()->route('documents.show', $unlockedDocument)
+                ->with('success', 'Le mot de passe a été supprimé avec succès.');
+                
+        } catch (Exception $e) {
+            Log::error('PDF decryption failed', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return back()->with('error', 'Erreur lors du déverrouillage: ' . $e->getMessage());
+        }
+    }
+    
+    /**
      * Serve document file
      */
     public function serve(Document $document)

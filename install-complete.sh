@@ -94,12 +94,86 @@ done
 print_info "Checking optional dependencies..."
 check_command libreoffice || print_warning "LibreOffice not found (required for document conversions)"
 check_command tesseract || print_warning "Tesseract not found (required for OCR)"
-check_command qpdf || print_warning "qpdf not found (optimal for PDF operations)"
+check_command qpdf || print_warning "qpdf not found (RECOMMENDED for PDF password removal)"
+check_command gs || print_warning "Ghostscript not found (RECOMMENDED for forced PDF unlocking)"
 check_command pdftk || print_warning "pdftk not found (fallback for PDF operations)"
+check_command pdftotext || print_warning "pdftotext not found (for PDF text extraction)"
+check_command pdftohtml || print_warning "pdftohtml not found (for PDF to HTML conversion)"
+check_command wkhtmltopdf || print_warning "wkhtmltopdf not found (for HTML to PDF conversion)"
+check_command convert || print_warning "ImageMagick not found (for image processing)"
+check_command python3 || print_warning "Python3 not found (for advanced PDF features)"
+check_command pip3 || print_warning "pip3 not found (for Python packages)"
 
 if [ $MISSING_DEPS -eq 1 ]; then
     print_error "Missing required dependencies. Please install them first."
     exit 1
+fi
+
+# Step 1b: Install optional PDF tools if missing
+print_info "Checking and installing PDF tools..."
+
+# Detect OS
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+else
+    OS="unknown"
+fi
+
+# Install qpdf if missing (essential for password removal)
+if ! command -v qpdf &> /dev/null; then
+    print_warning "Installing qpdf for PDF password removal..."
+    case $OS in
+        ubuntu|debian)
+            apt-get update && apt-get install -y qpdf
+            ;;
+        centos|rhel|fedora)
+            yum install -y qpdf
+            ;;
+        *)
+            print_warning "Please install qpdf manually for PDF password removal"
+            ;;
+    esac
+fi
+
+# Install ghostscript if missing (essential for forced password removal)
+if ! command -v gs &> /dev/null; then
+    print_warning "Installing ghostscript for forced PDF unlocking..."
+    case $OS in
+        ubuntu|debian)
+            apt-get install -y ghostscript
+            ;;
+        centos|rhel|fedora)
+            yum install -y ghostscript
+            ;;
+        *)
+            print_warning "Please install ghostscript manually for forced PDF unlocking"
+            ;;
+    esac
+fi
+
+# Install poppler-utils if missing
+if ! command -v pdftotext &> /dev/null; then
+    print_warning "Installing poppler-utils for PDF text extraction..."
+    case $OS in
+        ubuntu|debian)
+            apt-get install -y poppler-utils
+            ;;
+        centos|rhel|fedora)
+            yum install -y poppler-utils
+            ;;
+        *)
+            print_warning "Please install poppler-utils manually"
+            ;;
+    esac
+fi
+
+# Install Python packages for PDF manipulation
+if command -v python3 &> /dev/null && command -v pip3 &> /dev/null; then
+    print_info "Installing Python PDF libraries..."
+    pip3 install --break-system-packages pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml 2>/dev/null || \
+    pip3 install --user pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml 2>/dev/null || \
+    print_warning "Could not install Python PDF libraries automatically"
 fi
 
 # Step 2: Navigate to project directory
@@ -261,20 +335,28 @@ php artisan view:cache
 php artisan optimize
 print_success "Application optimized"
 
-# Step 18: Create first tenant and admin user
-print_info "Creating first tenant and admin user..."
-read -p "Enter organization name: " ORG_NAME
-read -p "Enter admin email: " ADMIN_EMAIL
-read -sp "Enter admin password: " ADMIN_PASS
-echo ""
+# Step 18: Run Giga-PDF installation command
+print_info "Running Giga-PDF installation command..."
+php artisan gigapdf:install --force --with-demo || {
+    print_warning "Giga-PDF installation command failed or already installed"
+}
 
-php artisan tenant:create "$ORG_NAME" <<EOF
+# Step 18b: Create first tenant and admin user (if not created by install command)
+if ! php artisan tenant:list 2>/dev/null | grep -q "tenants found"; then
+    print_info "Creating first tenant and admin user..."
+    read -p "Enter organization name: " ORG_NAME
+    read -p "Enter admin email: " ADMIN_EMAIL
+    read -sp "Enter admin password: " ADMIN_PASS
+    echo ""
+
+    php artisan tenant:create "$ORG_NAME" <<EOF
 $ADMIN_EMAIL
 $ADMIN_PASS
 $ADMIN_PASS
 EOF
 
-print_success "Tenant and admin user created"
+    print_success "Tenant and admin user created"
+fi
 
 # Step 19: Install fonts for PDF operations
 print_info "Installing fonts..."

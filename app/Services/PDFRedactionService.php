@@ -332,6 +332,43 @@ class PDFRedactionService
     }
     
     /**
+     * Redact specific keywords from PDF
+     */
+    public function redactByKeywords(Document $document, array $options): Document
+    {
+        $keywords = $options['keywords'] ?? [];
+        $caseSensitive = $options['case_sensitive'] ?? false;
+        $wholeWord = $options['whole_word'] ?? false;
+        
+        // Convert keywords to patterns
+        $patterns = [];
+        foreach ($keywords as $keyword) {
+            $escapedKeyword = preg_quote($keyword, '/');
+            
+            // Build pattern based on options
+            $pattern = '';
+            if ($wholeWord) {
+                $pattern = '/\b' . $escapedKeyword . '\b/';
+            } else {
+                $pattern = '/' . $escapedKeyword . '/';
+            }
+            
+            // Add case sensitivity flag
+            if (!$caseSensitive) {
+                $pattern .= 'i';
+            }
+            
+            $patterns[] = [
+                'type' => 'regex',
+                'pattern' => $pattern,
+                'name' => 'Keyword: ' . $keyword,
+            ];
+        }
+        
+        return $this->redactByPattern($document, $patterns, $options);
+    }
+    
+    /**
      * Create audit log for redaction
      */
     public function logRedaction(Document $document, array $details): void
@@ -342,6 +379,7 @@ class PDFRedactionService
                 'action' => 'redaction',
                 'areas_redacted' => $details['areas_count'] ?? 0,
                 'patterns_used' => $details['patterns'] ?? [],
+                'keywords_count' => $details['keywords_count'] ?? 0,
                 'reason' => $details['reason'] ?? 'Sensitive content removal',
                 'user' => auth()->id(),
                 'timestamp' => now()->toIso8601String(),

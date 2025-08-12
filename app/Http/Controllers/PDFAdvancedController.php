@@ -37,6 +37,74 @@ class PDFAdvancedController extends Controller
     }
     
     /**
+     * Page Methods
+     */
+    public function index()
+    {
+        return Inertia::render('PDFAdvanced/Index');
+    }
+
+    public function signaturesPage()
+    {
+        $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+            ->where('mime_type', 'application/pdf')
+            ->latest()
+            ->get();
+            
+        return Inertia::render('PDFAdvanced/Signatures', [
+            'documents' => $documents
+        ]);
+    }
+
+    public function redactPage()
+    {
+        $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+            ->where('mime_type', 'application/pdf')
+            ->latest()
+            ->get();
+            
+        return Inertia::render('PDFAdvanced/Redact', [
+            'documents' => $documents
+        ]);
+    }
+
+    public function standardsPage()
+    {
+        $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+            ->where('mime_type', 'application/pdf')
+            ->latest()
+            ->get();
+            
+        return Inertia::render('PDFAdvanced/Standards', [
+            'documents' => $documents
+        ]);
+    }
+
+    public function comparePage()
+    {
+        $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+            ->where('mime_type', 'application/pdf')
+            ->latest()
+            ->get();
+            
+        return Inertia::render('PDFAdvanced/Compare', [
+            'documents' => $documents
+        ]);
+    }
+
+    public function formsPage()
+    {
+        $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+            ->where('mime_type', 'application/pdf')
+            ->latest()
+            ->get();
+            
+        return Inertia::render('PDFAdvanced/Forms', [
+            'documents' => $documents
+        ]);
+    }
+    
+    /**
      * Digital Signature Methods
      */
     public function signDocument(Request $request, Document $document)
@@ -278,6 +346,57 @@ class PDFAdvancedController extends Controller
         }
     }
     
+    public function redactByKeywords(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        $request->validate([
+            'keywords' => 'required|array|min:1',
+            'keywords.*' => 'required|string|max:255',
+            'case_sensitive' => 'boolean',
+            'whole_word' => 'boolean',
+            'redaction_color' => 'nullable|string|max:7',
+            'remove_metadata' => 'boolean',
+        ]);
+        
+        try {
+            DB::beginTransaction();
+            
+            $options = [
+                'keywords' => $request->keywords,
+                'case_sensitive' => $request->case_sensitive ?? false,
+                'whole_word' => $request->whole_word ?? false,
+                'color' => $request->redaction_color ?? '#000000',
+                'reason' => 'Keyword-based redaction',
+                'remove_metadata' => $request->remove_metadata ?? true,
+            ];
+            
+            $redactedDocument = $this->redactionService->redactByKeywords($document, $options);
+            
+            // Log redaction
+            $this->redactionService->logRedaction($redactedDocument, [
+                'keywords_count' => count($request->keywords),
+                'reason' => $options['reason'],
+            ]);
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'document' => $redactedDocument->load('user'),
+                'message' => 'Keywords redacted successfully',
+            ]);
+            
+        } catch (Exception $e) {
+            DB::rollBack();
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to redact keywords: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
     /**
      * PDF Standards Methods
      */
@@ -400,66 +519,116 @@ class PDFAdvancedController extends Controller
      */
     public function compareDocuments(Request $request)
     {
-        $request->validate([
-            'document1_id' => 'required|exists:documents,id',
-            'document2_id' => 'required|exists:documents,id',
-            'threshold' => 'nullable|numeric|min:0|max:100',
-            'detailed_analysis' => 'boolean',
-            'generate_diff_pdf' => 'boolean',
-            'create_diff_images' => 'boolean',
-        ]);
-        
-        $document1 = Document::findOrFail($request->document1_id);
-        $document2 = Document::findOrFail($request->document2_id);
-        
-        $this->authorize('view', $document1);
-        $this->authorize('view', $document2);
-        
-        try {
-            $options = [
-                'threshold' => $request->threshold ?? 95,
-                'detailed_analysis' => $request->detailed_analysis ?? false,
-                'generate_diff_pdf' => $request->generate_diff_pdf ?? false,
-                'create_diff_images' => $request->create_diff_images ?? false,
-                'highlight_differences' => true,
-                'include_diff_images' => true,
-            ];
-            
-            $comparison = $this->comparisonService->compareDocuments(
-                $document1,
-                $document2,
-                $options
-            );
-            
-            // Log comparison
-            activity()
-                ->withProperties([
-                    'action' => 'compared_documents',
-                    'document1' => $document1->id,
-                    'document2' => $document2->id,
-                    'similarity' => $comparison['similarity_percentage'],
-                ])
-                ->log('Documents compared');
-            
-            return response()->json([
-                'success' => true,
-                'comparison' => $comparison,
-                'message' => 'Documents compared successfully',
+        // Si c'est une requête POST (comparaison)
+        if ($request->isMethod('post')) {
+            $request->validate([
+                'document1_id' => 'required|exists:documents,id',
+                'document2_id' => 'required|exists:documents,id',
+                'threshold' => 'nullable|numeric|min:0|max:100',
+                'detailed_analysis' => 'boolean',
+                'generate_diff_pdf' => 'boolean',
+                'create_diff_images' => 'boolean',
             ]);
             
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to compare documents: ' . $e->getMessage(),
-            ], 500);
+            $document1 = Document::findOrFail($request->document1_id);
+            $document2 = Document::findOrFail($request->document2_id);
+            
+            $this->authorize('view', $document1);
+            $this->authorize('view', $document2);
+            
+            try {
+                $options = [
+                    'threshold' => $request->threshold ?? 95,
+                    'detailed_analysis' => $request->detailed_analysis ?? false,
+                    'generate_diff_pdf' => $request->generate_diff_pdf ?? false,
+                    'create_diff_images' => $request->create_diff_images ?? false,
+                    'highlight_differences' => true,
+                    'include_diff_images' => true,
+                ];
+                
+                // Check file sizes and use lightweight comparison if files are too large
+                $maxSizeForVisual = 20 * 1024 * 1024; // 20MB
+                $totalSize = $document1->size + $document2->size;
+                
+                if ($totalSize > $maxSizeForVisual || $request->comparison_type === 'text') {
+                    // Use lightweight text-based comparison
+                    $comparison = $this->comparisonService->compareLightweight(
+                        $document1,
+                        $document2
+                    );
+                } else {
+                    // Use visual comparison
+                    $comparison = $this->comparisonService->compareDocuments(
+                        $document1,
+                        $document2,
+                        $options
+                    );
+                }
+                
+                // Log comparison
+                activity()
+                    ->withProperties([
+                        'action' => 'compared_documents',
+                        'document1' => $document1->id,
+                        'document2' => $document2->id,
+                        'similarity' => $comparison['similarity_percentage'],
+                    ])
+                    ->log('Documents compared');
+                
+                // Pour les requêtes Inertia, retourner la page avec les résultats
+                if ($request->header('X-Inertia')) {
+                    $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+                        ->where('mime_type', 'application/pdf')
+                        ->latest()
+                        ->get();
+                        
+                    return Inertia::render('PDFAdvanced/Compare', [
+                        'documents' => $documents,
+                        'comparison' => $comparison,
+                        'flash' => [
+                            'success' => 'Documents compared successfully'
+                        ]
+                    ]);
+                }
+                
+                // Pour les requêtes AJAX normales
+                return response()->json([
+                    'success' => true,
+                    'comparison' => $comparison,
+                    'message' => 'Documents compared successfully',
+                ]);
+                
+            } catch (Exception $e) {
+                if ($request->header('X-Inertia')) {
+                    return back()->withErrors(['error' => 'Failed to compare documents: ' . $e->getMessage()]);
+                }
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to compare documents: ' . $e->getMessage(),
+                ], 500);
+            }
         }
+        
+        // Pour les requêtes GET, retourner la page Compare
+        $documents = Document::where('tenant_id', auth()->user()->tenant_id)
+            ->where('mime_type', 'application/pdf')
+            ->latest()
+            ->get();
+            
+        return Inertia::render('PDFAdvanced/Compare', [
+            'documents' => $documents
+        ]);
     }
     
     public function compareText(Request $request)
     {
         $request->validate([
             'document1_id' => 'required|exists:documents,id',
-            'document2_id' => 'required|exists:documents,id',
+            'document2_id' => 'required|exists:documents,id|different:document1_id',
+            'show_additions' => 'boolean',
+            'show_deletions' => 'boolean',
+            'show_modifications' => 'boolean',
         ]);
         
         $document1 = Document::findOrFail($request->document1_id);
@@ -469,7 +638,16 @@ class PDFAdvancedController extends Controller
         $this->authorize('view', $document2);
         
         try {
-            $comparison = $this->comparisonService->compareText($document1, $document2);
+            // Utiliser une vraie comparaison textuelle
+            $comparison = $this->comparisonService->compareTextContent(
+                $document1,
+                $document2,
+                [
+                    'show_additions' => $request->show_additions ?? true,
+                    'show_deletions' => $request->show_deletions ?? true,
+                    'show_modifications' => $request->show_modifications ?? true,
+                ]
+            );
             
             return response()->json([
                 'success' => true,
@@ -615,21 +793,5 @@ class PDFAdvancedController extends Controller
                 'message' => 'Failed to extract form data: ' . $e->getMessage(),
             ], 500);
         }
-    }
-    
-    /**
-     * Show advanced features page
-     */
-    public function index()
-    {
-        return Inertia::render('PDF/Advanced', [
-            'features' => [
-                'signatures' => true,
-                'redaction' => true,
-                'standards' => true,
-                'comparison' => true,
-                'forms' => true,
-            ],
-        ]);
     }
 }

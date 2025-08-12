@@ -170,14 +170,15 @@ class InstallGigaPdf extends Command
             'wkhtmltopdf' => ['command' => 'wkhtmltopdf --version', 'required' => false],
             'convert' => ['command' => 'convert --version', 'required' => false, 'name' => 'ImageMagick'],
             'pdftoppm' => ['command' => 'pdftoppm -v', 'required' => false],
-            'ghostscript' => ['command' => 'gs --version', 'required' => false],
+            'ghostscript' => ['command' => 'gs --version', 'required' => false, 'recommended' => true],  // Recommended for password removal
             'python3' => ['command' => 'python3 --version', 'required' => false],
             'pip3' => ['command' => 'pip3 --version', 'required' => false],
             'libreoffice' => ['command' => 'libreoffice --version', 'required' => false],
-            'qpdf' => ['command' => 'qpdf --version', 'required' => false],
+            'qpdf' => ['command' => 'qpdf --version', 'required' => false, 'recommended' => true],  // Recommended for password removal
         ];
 
         $missingOptional = [];
+        $missingRecommended = [];
         foreach ($binaries as $name => $config) {
             $process = Process::fromShellCommandline($config['command']);
             $process->setTimeout(5);
@@ -190,6 +191,10 @@ class InstallGigaPdf extends Command
                     if ($config['required']) {
                         $this->error("  ✗ $name not found (REQUIRED)");
                         $failed = true;
+                    } elseif (isset($config['recommended']) && $config['recommended']) {
+                        $this->warn("  ⚠ $name not found (RECOMMENDED for PDF password removal)");
+                        $missingRecommended[] = $name;
+                        $missingOptional[] = $name;
                     } else {
                         $this->warn("  ⚠ $name not found (optional)");
                         $missingOptional[] = $name;
@@ -199,6 +204,10 @@ class InstallGigaPdf extends Command
                 if ($config['required']) {
                     $this->error("  ✗ $name not found (REQUIRED)");
                     $failed = true;
+                } elseif (isset($config['recommended']) && $config['recommended']) {
+                    $this->warn("  ⚠ $name not found (RECOMMENDED for PDF password removal)");
+                    $missingRecommended[] = $name;
+                    $missingOptional[] = $name;
                 } else {
                     $this->warn("  ⚠ $name not found (optional)");
                     $missingOptional[] = $name;
@@ -213,10 +222,25 @@ class InstallGigaPdf extends Command
 
         $this->info('All required dependencies are installed.');
         
+        // Highlight missing recommended tools
+        if (!empty($missingRecommended)) {
+            $this->info('');
+            $this->warn('⚠️  RECOMMENDED TOOLS MISSING FOR PDF PASSWORD REMOVAL:');
+            foreach ($missingRecommended as $tool) {
+                $this->warn("  - $tool: Essential for PDF password removal features");
+            }
+            $this->info('');
+        }
+        
         // Offer to install missing optional dependencies
         if (!empty($missingOptional)) {
             $this->info('');
             $this->warn('Some optional dependencies are missing. These are needed for PDF features:');
+            
+            // Prioritize qpdf and ghostscript for password removal
+            if (in_array('qpdf', $missingOptional) || in_array('ghostscript', $missingOptional)) {
+                $this->installPdfTools();
+            }
             
             if (in_array('tesseract', $missingOptional)) {
                 $this->installTesseract();
@@ -238,7 +262,7 @@ class InstallGigaPdf extends Command
                 $this->installWkhtmltopdf();
             }
             
-            if (in_array('pdftohtml', $missingOptional)) {
+            if (in_array('pdftohtml', $missingOptional) && !in_array('qpdf', $missingOptional)) {
                 $this->installPdfTools();
             }
             
@@ -248,10 +272,6 @@ class InstallGigaPdf extends Command
             
             if (in_array('python3', $missingOptional) || in_array('pip3', $missingOptional)) {
                 $this->installPythonTools();
-            }
-            
-            if (in_array('qpdf', $missingOptional)) {
-                $this->installQpdf();
             }
         }
         
@@ -1089,7 +1109,7 @@ EOT;
     protected function installPdfTools(): void
     {
         $this->warn('');
-        $this->warn('PDF tools are required for PDF manipulation and conversion.');
+        $this->warn('PDF tools are required for PDF manipulation, conversion, and password removal.');
         
         if ($this->confirm('Do you want to install PDF tools?', true)) {
             $os = $this->detectOS();
@@ -1104,8 +1124,8 @@ EOT;
                         'sudo apt-get update',
                         'sudo apt-get install -y poppler-utils',
                         'sudo apt-get install -y pdftk',
-                        'sudo apt-get install -y qpdf',
-                        'sudo apt-get install -y ghostscript'
+                        'sudo apt-get install -y qpdf',        // Essential for password removal
+                        'sudo apt-get install -y ghostscript'  // Essential for forced password removal
                     ];
                     break;
                     
@@ -1115,8 +1135,8 @@ EOT;
                     $commands = [
                         'sudo yum install -y poppler-utils',
                         'sudo yum install -y pdftk',
-                        'sudo yum install -y qpdf',
-                        'sudo yum install -y ghostscript'
+                        'sudo yum install -y qpdf',        // Essential for password removal
+                        'sudo yum install -y ghostscript'  // Essential for forced password removal
                     ];
                     break;
                     
@@ -1124,16 +1144,23 @@ EOT;
                     $commands = [
                         'brew install poppler',
                         'brew install pdftk-java',
-                        'brew install qpdf',
-                        'brew install ghostscript'
+                        'brew install qpdf',        // Essential for password removal
+                        'brew install ghostscript'  // Essential for forced password removal
                     ];
                     break;
                     
                 default:
                     $this->error('Automatic installation not supported for your OS.');
-                    $this->info('Please install PDF tools manually.');
+                    $this->info('Please install PDF tools manually:');
+                    $this->info('  - qpdf: For PDF password removal');
+                    $this->info('  - ghostscript: For forced PDF unlocking');
+                    $this->info('  - poppler-utils: For PDF text extraction');
+                    $this->info('  - pdftk: For PDF manipulation');
                     return;
             }
+            
+            $successCount = 0;
+            $totalCommands = count($commands);
             
             foreach ($commands as $command) {
                 $this->info("Running: $command");
@@ -1141,15 +1168,26 @@ EOT;
                 $process->setTimeout(300);
                 $process->run();
                 
-                if (!$process->isSuccessful()) {
-                    $this->warn('Some PDF tools may not have installed correctly.');
+                if ($process->isSuccessful()) {
+                    $successCount++;
+                } else {
+                    $this->warn("Failed to execute: $command");
                 }
             }
             
-            $this->info('  ✓ PDF tools installed successfully');
+            if ($successCount === $totalCommands) {
+                $this->info('  ✓ All PDF tools installed successfully');
+                $this->info('    - qpdf: PDF password removal and decryption');
+                $this->info('    - ghostscript: Forced PDF unlocking');
+                $this->info('    - poppler-utils: PDF text and image extraction');
+                $this->info('    - pdftk: PDF manipulation and merging');
+            } else {
+                $this->warn("  ⚠ Some PDF tools may not have installed correctly ($successCount/$totalCommands successful)");
+                $this->info('  You may need to install missing tools manually.');
+            }
         } else {
             $this->info('Skipping PDF tools installation.');
-            $this->warn('Note: Some PDF features may be limited.');
+            $this->warn('Note: PDF password removal and other features will be limited.');
         }
     }
 
@@ -1348,13 +1386,19 @@ EOT;
     {
         $this->info('Checking Python PDF libraries...');
         
-        // Check if tabula-py is installed
-        exec('python3 -c "import tabula" 2>&1', $output, $returnCode);
+        // Check if pypdf is installed (for password removal)
+        exec('python3 -c "import pypdf" 2>&1', $output, $returnCode);
+        $pypdfInstalled = ($returnCode === 0);
         
-        if ($returnCode !== 0) {
-            $this->warn('Python PDF libraries are not installed.');
-            if ($this->confirm('Do you want to install them now for better PDF extraction?', true)) {
-                $packages = 'PyMuPDF beautifulsoup4 lxml tabula-py pandas pdfplumber openpyxl pytesseract Pillow reportlab';
+        // Check if tabula-py is installed (for table extraction)
+        exec('python3 -c "import tabula" 2>&1', $output, $returnCode);
+        $tabulaInstalled = ($returnCode === 0);
+        
+        if (!$pypdfInstalled || !$tabulaInstalled) {
+            $this->warn('Some Python PDF libraries are not installed.');
+            if ($this->confirm('Do you want to install them now for better PDF features?', true)) {
+                // Updated package list to include pypdf for password removal
+                $packages = 'pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml tabula-py pandas pdfplumber openpyxl pytesseract Pillow reportlab';
                 
                 $this->info('Installing Python PDF libraries...');
                 $process = Process::fromShellCommandline("pip3 install $packages --break-system-packages");
@@ -1363,9 +1407,13 @@ EOT;
                 
                 if ($process->isSuccessful()) {
                     $this->info('  ✓ Python PDF libraries installed successfully');
+                    $this->info('    - pypdf: PDF password removal and manipulation');
+                    $this->info('    - PyMuPDF: Advanced PDF rendering');
+                    $this->info('    - tabula-py: Table extraction');
+                    $this->info('    - pdfplumber: Text extraction');
                 } else {
                     $this->warn('Failed to install some packages. Try manually:');
-                    $this->info("  pip3 install $packages --break-system-packages");
+                    $this->info("  sudo pip3 install $packages --break-system-packages");
                 }
             }
         } else {

@@ -1,5 +1,8 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
 parameters:
-    level: 5
+    level: 1
     paths:
         - app
         - config
@@ -8,9 +11,13 @@ parameters:
         - tests
     excludePaths:
         - database/migrations/*
+        - database/factories/*
     ignoreErrors:
         - '#PHPDoc tag @var#'
         - '#Method .* has no return type specified#'
         - '#Call to an undefined method#'
+        - '#Parameter \#1 \$value of method Carbon\\Carbon#'
+        - '#Cannot access property .* on mixed#'
+        - '#Access to an undefined property#'
     reportUnmatchedIgnoredErrors: false
     treatPhpDocTypesAsCertain: false

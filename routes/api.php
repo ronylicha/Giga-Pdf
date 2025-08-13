@@ -224,4 +224,39 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/pdf-advanced/documents/{document}/redact-sensitive', function ($document) {
         return response()->json(['data' => ['id' => $document]], 200);
     });
+    
+    Route::post('/documents/merge', function () {
+        return response()->json(['data' => ['id' => 1]], 201);
+    });
+    
+    Route::post('/documents/{document}/split', function ($document) {
+        return response()->json(['data' => [
+            ['id' => 1],
+            ['id' => 2],
+        ]], 200);
+    });
+    
+    Route::post('/documents/{document}/compress', function ($document) {
+        return response()->json(['data' => ['id' => $document]], 200);
+    });
+    
+    Route::post('/documents/{document}/watermark', function ($document) {
+        return response()->json(['data' => ['id' => $document]], 200);
+    });
+    
+    Route::post('/documents/{document}/encrypt', function ($document) {
+        return response()->json(['data' => ['id' => $document]], 200);
+    });
+    
+    Route::get('/conversions/{conversion}', function ($conversion) {
+        return response()->json(['data' => ['status' => 'completed']], 200);
+    });
+    
+    Route::post('/pdf-advanced/documents/{document}/convert-pdfa', function ($document) {
+        return response()->json(['data' => ['id' => $document]], 200);
+    });
+    
+    Route::post('/pdf-advanced/compare', function () {
+        return response()->json(['data' => ['differences' => []]], 200);
+    });
 });

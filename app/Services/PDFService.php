@@ -463,7 +463,7 @@ PYTHON;
     /**
      * Rotate PDF pages
      */
-    public function rotate(Document $document, int $degrees, array $pages = null): Document
+    public function rotate(Document $document, int $userId, ?array $pages = null, int $degrees = 90): Document
     {
         try {
             $pdf = new Imagick();
@@ -503,7 +503,7 @@ PYTHON;
             // Create new document record
             $rotatedDocument = Document::create([
                 'tenant_id' => $document->tenant_id,
-                'user_id' => $document->user_id,
+                'user_id' => $userId,
                 'parent_id' => $document->id,
                 'original_name' => pathinfo($document->original_name, PATHINFO_FILENAME) . '_rotated.pdf',
                 'stored_name' => $path,
@@ -675,16 +675,17 @@ PYTHON;
     /**
      * Add watermark to PDF
      */
-    public function addWatermark(Document $document, string $watermarkText, array $options = []): Document
+    public function addWatermark(Document $document, int $userId, array $options = []): Document
     {
         try {
             $pdf = new Imagick();
             $pdf->readImage(Storage::path($document->stored_name));
 
             // Default options
+            $watermarkText = $options['text'] ?? 'WATERMARK';
             $fontSize = $options['fontSize'] ?? 30;
             $opacity = $options['opacity'] ?? 0.3;
-            $angle = $options['angle'] ?? -45;
+            $angle = $options['rotation'] ?? $options['angle'] ?? -45;
             $color = $options['color'] ?? '#000000';
             $position = $options['position'] ?? 'center'; // center, top-left, top-right, bottom-left, bottom-right
 
@@ -765,7 +766,7 @@ PYTHON;
             // Create document record
             $watermarkedDocument = Document::create([
                 'tenant_id' => $document->tenant_id,
-                'user_id' => $document->user_id,
+                'user_id' => $userId,
                 'parent_id' => $document->id,
                 'original_name' => pathinfo($document->original_name, PATHINFO_FILENAME) . '_watermarked.pdf',
                 'stored_name' => $path,

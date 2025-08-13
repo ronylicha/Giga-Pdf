@@ -22,7 +22,7 @@ class DocumentFactory extends Factory
         $extensions = ['pdf', 'docx', 'xlsx', 'pptx', 'txt', 'jpg', 'png'];
         $extension = fake()->randomElement($extensions);
         $originalName = fake()->word() . '.' . $extension;
-        
+
         return [
             'tenant_id' => Tenant::factory(),
             'user_id' => User::factory(),

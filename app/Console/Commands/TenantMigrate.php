@@ -138,12 +138,12 @@ class TenantMigrate extends Command
         app()->instance('tenant', $tenant);
         config(['database.connections.tenant' => [
             'driver' => 'mysql',
-            'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '3306'),
-            'database' => env('DB_DATABASE', 'gigapdf'),
-            'username' => env('DB_USERNAME', 'root'),
-            'password' => env('DB_PASSWORD', ''),
-            'unix_socket' => env('DB_SOCKET', ''),
+            'host' => config('database.connections.mysql.host', '127.0.0.1'),
+            'port' => config('database.connections.mysql.port', '3306'),
+            'database' => config('database.connections.mysql.database', 'gigapdf'),
+            'username' => config('database.connections.mysql.username', 'root'),
+            'password' => config('database.connections.mysql.password', ''),
+            'unix_socket' => config('database.connections.mysql.unix_socket', ''),
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
             'prefix' => 'tenant_' . $tenant->id . '_',
@@ -236,7 +236,7 @@ class TenantMigrate extends Command
 
         // Get all tables with the tenant prefix
         $tables = DB::select('SHOW TABLES');
-        $dbName = env('DB_DATABASE');
+        $dbName = config('database.connections.mysql.database');
 
         foreach ($tables as $table) {
             $tableName = $table->{"Tables_in_{$dbName}"} ?? null;

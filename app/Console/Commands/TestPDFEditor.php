@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Document;
-use App\Services\SimplePDFEditor;
+use App\Services\PDFEditorService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -26,7 +26,7 @@ class TestPDFEditor extends Command
         $this->info("Testing PDF editor with document: {$document->original_name}");
 
         try {
-            $editor = new SimplePDFEditor();
+            $editor = new PDFEditorService();
             $path = Storage::path($document->stored_name);
 
             if (! file_exists($path)) {

@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Document;
 use App\Models\User;
-use App\Services\SimplePDFEditor;
+use App\Services\PDFEditorService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -53,7 +53,7 @@ class TestFullModification extends Command
             // Step 3: Test direct modification with SimplePDFEditor
             $this->info("\nTesting direct modification with SimplePDFEditor...");
 
-            $editor = new SimplePDFEditor();
+            $editor = new PDFEditorService();
             $path = Storage::path($document->stored_name);
 
             $modification = [

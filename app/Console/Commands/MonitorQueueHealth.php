@@ -273,7 +273,8 @@ class MonitorQueueHealth extends Command
                 $masters = app(MasterSupervisorRepository::class)->all();
                 $status['running'] = ! empty($masters);
                 $status['supervisors'] = count($masters);
-                $status['paused'] = \Laravel\Horizon\Horizon::$paused ?? false;
+                // Check if Horizon is paused via Redis
+                $status['paused'] = app('redis')->get('horizon:paused') === 'paused';
             } catch (\Exception $e) {
                 // Horizon not properly configured
             }

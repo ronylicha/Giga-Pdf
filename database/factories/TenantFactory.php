@@ -18,7 +18,7 @@ class TenantFactory extends Factory
     public function definition(): array
     {
         $name = fake()->company();
-        
+
         return [
             'name' => $name,
             'slug' => Str::slug($name) . '-' . Str::random(6),

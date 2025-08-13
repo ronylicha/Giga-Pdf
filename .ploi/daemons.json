@@ -1,0 +1,49 @@
+{
+  "daemons": [
+    {
+      "name": "horizon",
+      "command": "php artisan horizon",
+      "directory": "{SITE_PATH}",
+      "user": "ploi",
+      "processes": 1,
+      "stop_wait_secs": 60,
+      "stop_signal": "TERM"
+    },
+    {
+      "name": "reverb",
+      "command": "php artisan reverb:start",
+      "directory": "{SITE_PATH}",
+      "user": "ploi",
+      "processes": 1,
+      "stop_wait_secs": 10,
+      "stop_signal": "TERM"
+    },
+    {
+      "name": "queue-default",
+      "command": "php artisan queue:work --sleep=3 --tries=3 --max-time=3600",
+      "directory": "{SITE_PATH}",
+      "user": "ploi",
+      "processes": 2,
+      "stop_wait_secs": 10,
+      "stop_signal": "TERM"
+    },
+    {
+      "name": "queue-conversions",
+      "command": "php artisan queue:work --queue=conversions --sleep=3 --tries=2 --timeout=300",
+      "directory": "{SITE_PATH}",
+      "user": "ploi",
+      "processes": 3,
+      "stop_wait_secs": 60,
+      "stop_signal": "TERM"
+    },
+    {
+      "name": "schedule",
+      "command": "php artisan schedule:work",
+      "directory": "{SITE_PATH}",
+      "user": "ploi",
+      "processes": 1,
+      "stop_wait_secs": 10,
+      "stop_signal": "TERM"
+    }
+  ]
+}

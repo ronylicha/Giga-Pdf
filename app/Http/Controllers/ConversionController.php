@@ -111,10 +111,37 @@ class ConversionController extends Controller
 
             DB::commit();
 
+            // Poll for completion (in production, use websockets)
+            $maxAttempts = 30; // 30 seconds max
+            $attempts = 0;
+
+            while ($attempts < $maxAttempts) {
+                sleep(1);
+                $conversion->refresh();
+
+                if ($conversion->status === 'completed') {
+                    return response()->json([
+                        'success' => true,
+                        'conversion_id' => $conversion->id,
+                        'message' => 'Conversion terminée avec succès',
+                        'download_url' => route('conversions.download', $conversion),
+                        'result_document_id' => $conversion->result_document_id,
+                    ]);
+                } elseif ($conversion->status === 'failed') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'La conversion a échoué: ' . $conversion->error_message,
+                    ], 500);
+                }
+
+                $attempts++;
+            }
+
             return response()->json([
                 'success' => true,
                 'conversion_id' => $conversion->id,
-                'message' => 'Conversion démarrée avec succès',
+                'message' => 'Conversion en cours de traitement',
+                'check_status_url' => route('conversions.show', $conversion),
             ]);
 
         } catch (\Exception $e) {
@@ -185,6 +212,97 @@ class ConversionController extends Controller
 
         return redirect()->route('conversions.index')
             ->with('success', 'Conversion supprimée avec succès');
+    }
+
+    /**
+     * Download converted file
+     */
+    public function download(Conversion $conversion)
+    {
+        $this->authorize('view', $conversion);
+
+        if ($conversion->status !== 'completed' || ! $conversion->result_document_id) {
+            return response()->json([
+                'message' => 'Le fichier converti n\'est pas disponible',
+            ], 404);
+        }
+
+        $document = Document::find($conversion->result_document_id);
+
+        if (! $document || ! Storage::exists($document->stored_name)) {
+            return response()->json([
+                'message' => 'Le fichier converti est introuvable',
+            ], 404);
+        }
+
+        return Storage::download($document->stored_name, $document->original_name);
+    }
+
+    /**
+     * Cancel a pending conversion
+     */
+    public function cancel(Conversion $conversion)
+    {
+        $this->authorize('update', $conversion);
+
+        if (! in_array($conversion->status, ['pending', 'processing'])) {
+            return response()->json([
+                'message' => 'Cette conversion ne peut pas être annulée',
+            ], 400);
+        }
+
+        $conversion->update([
+            'status' => 'cancelled',
+            'completed_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Conversion annulée avec succès',
+        ]);
+    }
+
+    /**
+     * Batch conversion for multiple documents
+     */
+    public function batch(Request $request)
+    {
+        $validated = $request->validate([
+            'document_ids' => 'required|array|min:1',
+            'document_ids.*' => 'exists:documents,id',
+            'output_format' => 'required|string|in:pdf,docx,doc,xlsx,xls,pptx,ppt,jpg,jpeg,png,gif,bmp,tiff,html,txt,md',
+        ]);
+
+        $user = auth()->user();
+        $tenant = $user->tenant;
+        $conversions = [];
+
+        foreach ($validated['document_ids'] as $documentId) {
+            $document = Document::where('tenant_id', $tenant->id)
+                ->where('id', $documentId)
+                ->first();
+
+            if (! $document) {
+                continue;
+            }
+
+            $conversion = Conversion::create([
+                'tenant_id' => $tenant->id,
+                'user_id' => $user->id,
+                'document_id' => $document->id,
+                'from_format' => $document->extension,
+                'to_format' => $validated['output_format'],
+                'status' => 'pending',
+            ]);
+
+            dispatch(new \App\Jobs\ProcessConversion($conversion));
+            $conversions[] = $conversion;
+        }
+
+        return response()->json([
+            'success' => true,
+            'conversions' => $conversions,
+            'message' => count($conversions) . ' conversions démarrées',
+        ]);
     }
 
     /**

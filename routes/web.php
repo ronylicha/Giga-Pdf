@@ -125,8 +125,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/', [ConversionController::class, 'index'])->name('index');
             Route::post('/create', [ConversionController::class, 'create'])->name('create');
             Route::get('/{conversion}', [ConversionController::class, 'show'])->name('show');
+            Route::get('/{conversion}/download', [ConversionController::class, 'download'])->name('download');
             Route::delete('/{conversion}', [ConversionController::class, 'destroy'])->name('destroy');
             Route::post('/{conversion}/retry', [ConversionController::class, 'retry'])->name('retry');
+            Route::post('/{conversion}/cancel', [ConversionController::class, 'cancel'])->name('cancel');
+            Route::post('/batch', [ConversionController::class, 'batch'])->name('batch');
         });
 
         // PDF Tools (requires tenant)

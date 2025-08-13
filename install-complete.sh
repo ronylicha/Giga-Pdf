@@ -12,10 +12,20 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-PROJECT_DIR="/var/www/html/giga-pdf"
-WEB_USER="www-data"
-WEB_GROUP="www-data"
+# Detect if running in Ploi environment
+if [ -n "$PLOI_SERVER_NAME" ] || [ -f /home/ploi/.ploi ] || [ -d /home/ploi ]; then
+    echo "Ploi environment detected"
+    IS_PLOI=true
+    PROJECT_DIR="${1:-/home/ploi/giga-pdf}"
+    WEB_USER="ploi"
+    WEB_GROUP="ploi"
+else
+    # Configuration for standard environment
+    PROJECT_DIR="/var/www/html/giga-pdf"
+    WEB_USER="www-data"
+    WEB_GROUP="www-data"
+    IS_PLOI=false
+fi
 
 # Functions
 print_success() {
@@ -259,6 +269,8 @@ php artisan db:seed --class=ProductionSeeder --force || {
 print_info "Creating storage directories..."
 mkdir -p storage/app/public/{documents,conversions,thumbnails,temp}
 mkdir -p storage/app/private/{documents,conversions,thumbnails,temp}
+mkdir -p storage/app/libreoffice/{cache,config,temp}
+mkdir -p storage/app/conversions
 mkdir -p storage/backups
 mkdir -p storage/framework/{sessions,views,cache}
 mkdir -p storage/logs
@@ -276,6 +288,8 @@ chmod -R 755 $PROJECT_DIR
 chmod -R 775 storage bootstrap/cache
 chmod -R 775 storage/app/public
 chmod -R 775 storage/app/private
+chmod -R 775 storage/app/libreoffice
+chmod -R 775 storage/app/conversions
 print_success "File permissions set"
 
 # Step 13: Configure Laravel Horizon
@@ -339,6 +353,12 @@ print_success "Application optimized"
 print_info "Running Giga-PDF installation command..."
 php artisan gigapdf:install --force --with-demo || {
     print_warning "Giga-PDF installation command failed or already installed"
+}
+
+# Step 18a: Setup LibreOffice for conversions
+print_info "Setting up LibreOffice for document conversions..."
+php artisan libreoffice:setup || {
+    print_warning "LibreOffice setup failed - conversions may not work properly"
 }
 
 # Step 18b: Create first tenant and admin user (if not created by install command)

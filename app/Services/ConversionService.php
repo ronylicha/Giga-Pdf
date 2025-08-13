@@ -19,7 +19,8 @@ class ConversionService
      */
     public function convert(string $inputPath, string $fromFormat, string $toFormat, array $options = []): string
     {
-        $outputDir = sys_get_temp_dir() . '/giga_pdf_conversions';
+        // Use local storage for output directory
+        $outputDir = storage_path('app/conversions');
         if (! is_dir($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
@@ -65,7 +66,8 @@ class ConversionService
      */
     protected function convertWithLibreOffice(string $inputPath, string $outputPath, string $fromFormat, string $toFormat, array $options = []): void
     {
-        $tempDir = sys_get_temp_dir() . '/libreoffice_' . uniqid();
+        // Use local temp directory within storage
+        $tempDir = storage_path('app/libreoffice/temp/conversion_' . uniqid());
         mkdir($tempDir, 0755, true);
 
         try {
@@ -80,6 +82,13 @@ class ConversionService
             ]);
 
             exec($command, $output, $returnCode);
+            
+            // Log the output for debugging
+            Log::info('LibreOffice output', [
+                'returnCode' => $returnCode,
+                'output' => implode("\n", $output),
+                'tempDir' => $tempDir,
+            ]);
 
             if ($returnCode !== 0) {
                 throw new ConversionFailedException(
@@ -91,6 +100,13 @@ class ConversionService
             $convertedFile = $this->findConvertedFile($tempDir, $inputPath, $toFormat);
 
             if (! $convertedFile) {
+                // Log directory contents for debugging
+                $files = glob($tempDir . '/*');
+                Log::error('Converted file not found', [
+                    'tempDir' => $tempDir,
+                    'files' => $files,
+                    'expectedFormat' => $toFormat,
+                ]);
                 throw new ConversionFailedException("Fichier converti non trouvé dans le répertoire temporaire");
             }
 
@@ -109,22 +125,51 @@ class ConversionService
      */
     protected function buildLibreOfficeCommand(string $inputPath, string $outputDir, string $toFormat, ?array $filter): string
     {
-        $baseCommand = 'libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore';
+        // Use local directories for LibreOffice to avoid permission issues
+        $userProfile = storage_path('app/libreoffice/config');
+        $cacheDir = storage_path('app/libreoffice/cache');
+        
+        // Ensure directories exist
+        if (!is_dir($userProfile)) {
+            mkdir($userProfile, 0775, true);
+        }
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0775, true);
+        }
+        
+        $baseCommand = sprintf(
+            'env HOME=%s libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore -env:UserInstallation=file://%s',
+            escapeshellarg($cacheDir),
+            $userProfile
+        );
 
-        if ($filter) {
+        if ($filter && $filter['input']) {
+            // With input filter
+            $convertTo = $filter['output'] ? sprintf('%s:%s', $toFormat, $filter['output']) : $toFormat;
             return sprintf(
-                '%s --infilter="%s" --convert-to %s --outdir %s %s 2>&1',
+                '%s --infilter=%s --convert-to %s --outdir %s %s 2>&1',
                 $baseCommand,
-                $filter['input'],
-                $toFormat . ($filter['output'] ? ':' . $filter['output'] : ''),
+                escapeshellarg($filter['input']),
+                escapeshellarg($convertTo),
+                escapeshellarg($outputDir),
+                escapeshellarg($inputPath)
+            );
+        } elseif ($filter && $filter['output']) {
+            // With output filter only
+            return sprintf(
+                '%s --convert-to %s:%s --outdir %s %s 2>&1',
+                $baseCommand,
+                $toFormat,
+                escapeshellarg($filter['output']),
                 escapeshellarg($outputDir),
                 escapeshellarg($inputPath)
             );
         } else {
+            // No filter
             return sprintf(
                 '%s --convert-to %s --outdir %s %s 2>&1',
                 $baseCommand,
-                escapeshellarg($toFormat),
+                $toFormat,
                 escapeshellarg($outputDir),
                 escapeshellarg($inputPath)
             );

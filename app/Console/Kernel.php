@@ -23,6 +23,9 @@ class Kernel extends ConsoleKernel
 
         // Cleanup temporary documents daily
         $schedule->command('documents:cleanup-temp --hours=24')->daily();
+        
+        // Cleanup LibreOffice temporary files daily
+        $schedule->command('libreoffice:cleanup')->daily()->at('01:00');
 
         // Restart queue workers hourly for memory leaks
         $schedule->command('queue:restart')->hourly();

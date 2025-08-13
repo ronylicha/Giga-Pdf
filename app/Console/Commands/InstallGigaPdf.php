@@ -774,6 +774,9 @@ EOT;
     protected function optimize(): void
     {
         $this->info('Running optimizations...');
+        
+        // Create LibreOffice directories
+        $this->createLibreOfficeDirectories();
 
         Artisan::call('config:cache');
         $this->info('  ✓ Configuration cached');
@@ -1934,5 +1937,44 @@ PYTHON;
         }
 
         return 'unknown';
+    }
+    
+    /**
+     * Create LibreOffice directories
+     */
+    protected function createLibreOfficeDirectories(): void
+    {
+        $this->info('Creating LibreOffice and conversion directories...');
+        
+        $directories = [
+            storage_path('app/libreoffice'),
+            storage_path('app/libreoffice/cache'),
+            storage_path('app/libreoffice/config'),
+            storage_path('app/libreoffice/temp'),
+            storage_path('app/conversions'),
+        ];
+        
+        foreach ($directories as $dir) {
+            if (!is_dir($dir)) {
+                mkdir($dir, 0775, true);
+            }
+        }
+        
+        // Set proper permissions
+        $storageDir = storage_path('app/libreoffice');
+        $webUser = 'www-data';
+        $webGroup = 'www-data';
+        
+        // Try to change ownership if running as root
+        if (function_exists('posix_getuid') && posix_getuid() === 0) {
+            $process = new Process(['chown', '-R', "$webUser:$webGroup", $storageDir]);
+            $process->run();
+        }
+        
+        // Always ensure permissions are correct
+        $process = new Process(['chmod', '-R', '775', $storageDir]);
+        $process->run();
+        
+        $this->info('  ✓ LibreOffice and conversion directories created');
     }
 }

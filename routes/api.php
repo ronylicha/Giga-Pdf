@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\PDFToolsController;
 use App\Http\Controllers\Api\V1\ShareController;
 use App\Http\Controllers\Api\V1\TenantController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\HealthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "api" middleware group. Make something great!
 |
 */
+
+// Health check endpoints (no authentication required)
+Route::get('/health', [HealthController::class, 'check'])->name('health.check');
+Route::get('/ping', [HealthController::class, 'ping'])->name('health.ping');
 
 // API Version 1
 Route::prefix('v1')->name('api.v1.')->group(function () {

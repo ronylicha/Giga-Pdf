@@ -348,7 +348,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import axios from 'axios';
@@ -357,6 +357,14 @@ const props = defineProps({
     userDocuments: {
         type: Array,
         default: () => []
+    },
+    recentConversions: {
+        type: Array,
+        default: () => []
+    },
+    selectedDocumentId: {
+        type: Number,
+        default: null
     }
 });
 
@@ -507,4 +515,18 @@ const resetConversion = () => {
     conversionComplete.value = false;
     selectedFormat.value = 'pdf';
 };
+
+// Initialize with selected document if provided
+onMounted(() => {
+    if (props.selectedDocumentId) {
+        // Switch to existing documents tab
+        sourceType.value = 'existing';
+        
+        // Find and select the document
+        const selectedDoc = props.userDocuments.find(doc => doc.id === props.selectedDocumentId);
+        if (selectedDoc) {
+            selectedFiles.value = [selectedDoc];
+        }
+    }
+});
 </script>

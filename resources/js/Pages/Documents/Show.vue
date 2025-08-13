@@ -186,7 +186,7 @@
                             <p class="text-sm">Compresser</p>
                         </Link>
                         <Link
-                            :href="route('conversions.create', { document_id: document.id })"
+                            :href="route('conversions.index', { document_id: document.id })"
                             class="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 text-center"
                         >
                             <svg class="w-8 h-8 mx-auto mb-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -261,6 +261,55 @@
                 </div>
             </div>
         </Modal>
+
+        <!-- Share Success Modal -->
+        <Modal :show="showShareSuccess" @close="showShareSuccess = false">
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-4">Lien de partage créé avec succès !</h3>
+                <div class="space-y-4">
+                    <div class="bg-gray-100 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-2">Lien de partage :</p>
+                        <div class="flex items-center space-x-2">
+                            <input
+                                :value="shareUrl"
+                                readonly
+                                class="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm"
+                            >
+                            <button
+                                @click="copyShareLink"
+                                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                            >
+                                Copier
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="shareWithPassword" class="bg-yellow-50 p-3 rounded-lg">
+                        <p class="text-sm text-yellow-800">
+                            <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                            </svg>
+                            Ce lien est protégé par mot de passe
+                        </p>
+                    </div>
+                    <div v-if="shareExpiration" class="bg-blue-50 p-3 rounded-lg">
+                        <p class="text-sm text-blue-800">
+                            <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+                            </svg>
+                            Ce lien expirera le {{ new Date(shareExpiration).toLocaleDateString('fr-FR') }}
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end">
+                    <button
+                        @click="showShareSuccess = false"
+                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                    >
+                        Fermer
+                    </button>
+                </div>
+            </div>
+        </Modal>
     </AuthenticatedLayout>
 </template>
 
@@ -270,6 +319,7 @@ import { Link, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.min.mjs';
+import axios from 'axios';
 
 // Configure PDF.js worker - use local file to avoid CORS issues
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.min.js';
@@ -294,6 +344,8 @@ const shareEmail = ref('');
 const shareExpiration = ref('');
 const shareWithPassword = ref(false);
 const sharePassword = ref('');
+const shareUrl = ref('');
+const showShareSuccess = ref(false);
 
 // Computed
 const isPDF = computed(() => props.document.mime_type === 'application/pdf');
@@ -325,20 +377,34 @@ const downloadDocument = () => {
 
 const createShare = async () => {
     try {
-        await router.post(route('documents.share', props.document.id), {
+        const response = await axios.post(route('documents.share', props.document.id), {
             type: shareType.value,
             email: shareEmail.value,
             expires_at: shareExpiration.value,
             password: shareWithPassword.value ? sharePassword.value : null,
-        }, {
-            onSuccess: () => {
-                showShareModal.value = false;
-                // Show success message
-            }
         });
+        
+        if (response.data && response.data.url) {
+            shareUrl.value = response.data.url;
+            showShareModal.value = false;
+            showShareSuccess.value = true;
+            
+            // Reset form
+            shareType.value = 'link';
+            shareEmail.value = '';
+            shareExpiration.value = '';
+            shareWithPassword.value = false;
+            sharePassword.value = '';
+        }
     } catch (error) {
         console.error('Error creating share:', error);
+        alert('Erreur lors de la création du lien de partage');
     }
+};
+
+const copyShareLink = () => {
+    navigator.clipboard.writeText(shareUrl.value);
+    alert('Lien copié dans le presse-papier !');
 };
 
 // PDF viewer methods

@@ -436,26 +436,34 @@ class DocumentController extends Controller
         $this->authorize('share', $document);
 
         $validated = $request->validate([
-            'type' => 'required|in:public,password,user',
-            'password' => 'nullable|string|min:6|required_if:type,password',
+            'type' => 'required|in:link,email',
+            'password' => 'nullable|string|min:6',
             'expires_at' => 'nullable|date|after:now',
             'permissions' => 'nullable|array',
-            'user_email' => 'nullable|email|required_if:type,user',
+            'email' => 'nullable|email|required_if:type,email',
         ]);
+
+        // Map frontend types to model types
+        $shareType = Share::TYPE_PUBLIC;
+        if ($validated['type'] === 'email' && isset($validated['email'])) {
+            $shareType = Share::TYPE_INTERNAL;
+        } elseif (isset($validated['password']) && !empty($validated['password'])) {
+            $shareType = Share::TYPE_PROTECTED;
+        }
 
         $share = Share::create([
             'document_id' => $document->id,
             'shared_by' => Auth::id(),
-            'type' => $validated['type'],
+            'type' => $shareType,
             'token' => Str::random(32),
-            'password' => $validated['password'] ? Hash::make($validated['password']) : null,
+            'password' => isset($validated['password']) && !empty($validated['password']) ? Hash::make($validated['password']) : null,
             'expires_at' => $validated['expires_at'] ?? null,
             'permissions' => $validated['permissions'] ?? ['view', 'download'],
         ]);
 
         // If sharing with specific user
-        if ($validated['type'] === 'user' && $validated['user_email']) {
-            $recipient = User::where('email', $validated['user_email'])->first();
+        if ($shareType === Share::TYPE_INTERNAL && isset($validated['email'])) {
+            $recipient = User::where('email', $validated['email'])->first();
             if ($recipient) {
                 $share->shared_with = $recipient->id;
                 $share->save();

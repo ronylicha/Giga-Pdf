@@ -24,7 +24,7 @@ class ConversionController extends Controller
     /**
      * Display conversion page
      */
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
         $tenant = $user->tenant;
@@ -44,9 +44,18 @@ class ConversionController extends Controller
             ->limit(10)
             ->get();
 
+        // Get selected document if provided
+        $selectedDocument = null;
+        if ($request->has('document_id')) {
+            $selectedDocument = Document::where('tenant_id', $tenant->id)
+                ->where('id', $request->document_id)
+                ->first();
+        }
+
         return Inertia::render('Documents/Convert', [
             'userDocuments' => $userDocuments,
             'recentConversions' => $recentConversions,
+            'selectedDocumentId' => $selectedDocument ? $selectedDocument->id : null,
         ]);
     }
 

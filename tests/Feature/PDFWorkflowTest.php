@@ -190,17 +190,14 @@ class PDFWorkflowTest extends TestCase
         // Create users with different roles
         $admin = User::factory()->create([
             'tenant_id' => $this->tenant->id,
-            'role' => 'tenant-admin',
         ]);
 
         $editor = User::factory()->create([
             'tenant_id' => $this->tenant->id,
-            'role' => 'editor',
         ]);
 
         $viewer = User::factory()->create([
             'tenant_id' => $this->tenant->id,
-            'role' => 'viewer',
         ]);
 
         $document = Document::factory()->create([

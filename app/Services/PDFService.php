@@ -692,7 +692,12 @@ PYTHON;
             $draw->setFillColor(new \ImagickPixel($color));
             $draw->setFillOpacity($opacity);
             $draw->setFontSize($fontSize);
-            $draw->setFont('Arial'); // You may need to specify full path to font file
+            // Try to use a font that should be available
+            try {
+                $draw->setFont('Helvetica');
+            } catch (\Exception $e) {
+                // If Helvetica is not available, skip setting font (use default)
+            }
 
             $pageCount = $pdf->getNumberImages();
 

@@ -2,12 +2,23 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class RegistrationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        
+        // Create a default tenant for registration
+        $tenant = Tenant::factory()->create();
+        app()->instance('tenant', $tenant);
+        config(['tenant.id' => $tenant->id]);
+    }
 
     public function test_registration_screen_can_be_rendered(): void
     {

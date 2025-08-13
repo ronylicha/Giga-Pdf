@@ -221,6 +221,9 @@ PYTHON;
         for ($i = 1; $i <= $pageCount; $i++) {
             $filename = $baseName . '_page_' . $i . '_' . time() . '.pdf';
             $path = 'documents/' . $document->tenant_id . '/' . $filename;
+            
+            // Ensure directory exists
+            Storage::makeDirectory('documents/' . $document->tenant_id);
             $fullPath = Storage::path($path);
 
             // Use qpdf to extract single page

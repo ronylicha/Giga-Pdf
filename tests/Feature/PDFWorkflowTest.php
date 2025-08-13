@@ -26,7 +26,6 @@ class PDFWorkflowTest extends TestCase
         $this->tenant = Tenant::factory()->create();
         $this->user = User::factory()->create([
             'tenant_id' => $this->tenant->id,
-            'role' => 'editor',
         ]);
 
         // Set tenant context

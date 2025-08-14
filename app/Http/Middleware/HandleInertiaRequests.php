@@ -45,6 +45,11 @@ class HandleInertiaRequests extends Middleware
                     'is_super_admin' => $user->isSuperAdmin(),
                     'is_tenant_admin' => $user->isTenantAdmin(),
                 ] : null,
+                'tenant' => $user && $user->tenant ? [
+                    'id' => $user->tenant->id,
+                    'name' => $user->tenant->name,
+                    'slug' => $user->tenant->slug,
+                ] : null,
             ],
             'impersonation' => [
                 'active' => session()->has('impersonator_id'),

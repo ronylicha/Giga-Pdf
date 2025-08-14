@@ -49,7 +49,7 @@ else
 fi
 
 # Navigate to site directory
-SITE_PATH="${1:-/home/ploi/giga-pdf}"
+SITE_PATH="${1:-/home/ploi/giga-pdf.com}"
 cd $SITE_PATH
 
 # Check if .env exists

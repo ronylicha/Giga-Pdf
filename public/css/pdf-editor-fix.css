@@ -1,0 +1,184 @@
+/**
+ * PDF Editor Image Display Fixes
+ * Ensures all images are properly displayed in the PDF editor
+ */
+
+/* Global image fixes */
+img {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+/* Fix for PDF image containers */
+.pdf-image-container {
+    position: absolute !important;
+    overflow: visible !important;
+    background-color: transparent;
+    border: 1px dashed rgba(0, 123, 255, 0.3);
+    cursor: move;
+    z-index: 100 !important;
+    transition: border-color 0.2s ease;
+}
+
+.pdf-image-container:hover {
+    border-color: rgba(0, 123, 255, 0.5);
+}
+
+.pdf-image-container.active {
+    border: 2px solid #007bff;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
+}
+
+/* Fix for PDF images - only override problematic ones */
+.pdf-image {
+    display: block;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+
+/* Only fix images in containers if they have 0 dimensions */
+.pdf-image-container img[style*="width: 0"],
+.pdf-image-container img[style*="height: 0"] {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+}
+
+/* Fix for vector images - preserve their original dimensions */
+.pdf-vector {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+/* Image controls */
+.pdf-image-controls {
+    position: absolute;
+    top: -35px;
+    right: 0;
+    display: none;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    white-space: nowrap;
+}
+
+.pdf-image-container:hover .pdf-image-controls,
+.pdf-image-container.active .pdf-image-controls {
+    display: flex !important;
+    gap: 4px;
+}
+
+.pdf-image-controls button {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #333;
+    transition: all 0.2s ease;
+}
+
+.pdf-image-controls button:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+    color: #007bff;
+}
+
+.pdf-image-controls button:active {
+    transform: scale(0.95);
+}
+
+/* Resize handles */
+.resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #007bff;
+    border: 2px solid white;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 1001;
+    display: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+}
+
+.pdf-image-container:hover .resize-handle,
+.pdf-image-container.active .resize-handle {
+    display: block !important;
+}
+
+.resize-handle:hover {
+    transform: scale(1.2);
+    background: #0056b3;
+}
+
+.resize-handle.nw {
+    top: -6px;
+    left: -6px;
+    cursor: nw-resize;
+}
+
+.resize-handle.ne {
+    top: -6px;
+    right: -6px;
+    cursor: ne-resize;
+}
+
+.resize-handle.sw {
+    bottom: -6px;
+    left: -6px;
+    cursor: sw-resize;
+}
+
+.resize-handle.se {
+    bottom: -6px;
+    right: -6px;
+    cursor: se-resize;
+}
+
+/* Ensure base64 images are visible */
+img[src^="data:image"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Page container adjustments */
+.pdf-page-container {
+    position: relative;
+    overflow: visible !important;
+}
+
+/* Debug mode - uncomment to highlight all images */
+/*
+img {
+    border: 2px solid red !important;
+}
+.pdf-image-container {
+    background: rgba(255, 0, 0, 0.1) !important;
+}
+*/
+
+/* Print styles */
+@media print {
+    .pdf-image-controls,
+    .resize-handle {
+        display: none !important;
+    }
+    
+    .pdf-image-container {
+        border: none !important;
+        box-shadow: none !important;
+    }
+}

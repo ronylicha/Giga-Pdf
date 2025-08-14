@@ -107,6 +107,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{document}/save-html', [DocumentController::class, 'saveHtml'])->name('save-html');
             Route::post('/{document}/save-html-as-pdf', [DocumentController::class, 'saveHtmlAsPdf'])->name('save-html-as-pdf');
             Route::get('/{document}/assets/{filename}', [DocumentController::class, 'serveAsset'])->name('serve-asset')->where('filename', '.*');
+            
+            // Editor image upload routes
+            Route::post('/{document}/upload-editor-image', [DocumentController::class, 'uploadEditorImage'])->name('upload-editor-image');
+            Route::get('/{document}/editor-image/{filename}', [DocumentController::class, 'getEditorImage'])->name('editor-image');
 
             // PDF specific operations
             Route::post('/merge', [DocumentController::class, 'merge'])->name('merge');

@@ -263,6 +263,72 @@ class PdfToHtmlService
             $output = $process->getOutput();
             if ($output && strpos($output, '<!DOCTYPE html>') !== false) {
                 Log::info("Successfully converted PDF to self-contained HTML with base64 images.");
+                
+                // Inject CSS fixes in the head
+                $cssPath = public_path('css/pdf-editor-fix.css');
+                if (file_exists($cssPath)) {
+                    $cssContent = '<style>' . file_get_contents($cssPath) . '</style>';
+                    $output = str_replace('</head>', $cssContent . '</head>', $output);
+                }
+                
+                // Add targeted CSS fix ONLY for problematic images
+                $targetedCss = '<style>
+                    /* Only fix images that have 0px dimensions */
+                    img[style*="width: 0px"], 
+                    img[style*="height: 0px"],
+                    img[style*="width:0px"], 
+                    img[style*="height:0px"] {
+                        width: 100% !important;
+                        height: 100% !important;
+                        display: block !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                    }
+                    
+                    /* Ensure all images are at least visible */
+                    img {
+                        min-width: 1px;
+                        min-height: 1px;
+                        visibility: visible;
+                        opacity: 1;
+                    }
+                </style>';
+                $output = str_replace('</head>', $targetedCss . '</head>', $output);
+                
+                // Inject the image fix script before closing body tag
+                $fixScriptPath = public_path('js/pdf-editor-inline-fix.js');
+                if (file_exists($fixScriptPath)) {
+                    $fixScript = '
+<script>
+' . file_get_contents($fixScriptPath) . '
+</script>';
+                } else {
+                    // Fallback inline script if file doesn't exist
+                    $fixScript = '
+<script>
+(function(){
+    // Emergency fix for PDF images
+    var style = document.createElement("style");
+    style.textContent = ".pdf-image,.pdf-vector,img{display:block!important;visibility:visible!important;opacity:1!important}";
+    document.head.appendChild(style);
+    
+    // Fix all images
+    setTimeout(function(){
+        var imgs = document.querySelectorAll("img");
+        imgs.forEach(function(img){
+            img.style.display = "block";
+            img.style.visibility = "visible";
+            img.style.opacity = "1";
+        });
+        console.log("Fixed " + imgs.length + " images");
+    }, 100);
+})();
+</script>';
+                }
+                
+                // Insert the script before closing body tag
+                $output = str_replace('</body>', $fixScript . '</body>', $output);
+                
                 return $output;
             }
         }

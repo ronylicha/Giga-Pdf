@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -626,6 +627,91 @@ class DocumentController extends Controller
         ]);
     }
 
+    /**
+     * Upload an image for the HTML editor
+     */
+    public function uploadEditorImage(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+        
+        $request->validate([
+            'image' => 'required|image|max:10240', // Max 10MB
+        ]);
+        
+        try {
+            $file = $request->file('image');
+            
+            // Get file content and convert to base64
+            $fileContent = file_get_contents($file->getRealPath());
+            $mimeType = $file->getMimeType();
+            $base64 = base64_encode($fileContent);
+            $dataUrl = 'data:' . $mimeType . ';base64,' . $base64;
+            
+            // Also save the file for later use if needed
+            $filename = 'editor_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+            $path = 'editor-images/' . $document->id . '/' . $filename;
+            Storage::disk('local')->put($path, $fileContent);
+            
+            // Return the data URL directly
+            return response()->json([
+                'success' => true,
+                'url' => $dataUrl,
+                'filename' => $filename,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to upload editor image', [
+                'error' => $e->getMessage(),
+                'document_id' => $document->id,
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to upload image: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
+    /**
+     * Get an editor image
+     */
+    public function getEditorImage(Document $document, $filename)
+    {
+        // Security: Clean the filename
+        $filename = basename($filename);
+        
+        // Check for token-based access first
+        $token = request()->query('token');
+        if ($token) {
+            $cachedToken = Cache::get('editor_image_token_' . $document->id . '_' . $filename);
+            if ($token !== $cachedToken) {
+                abort(403, 'Invalid token');
+            }
+        } else {
+            // Fall back to regular authorization
+            try {
+                $this->authorize('view', $document);
+            } catch (\Exception $e) {
+                abort(403, 'Unauthorized');
+            }
+        }
+        
+        $path = 'editor-images/' . $document->id . '/' . $filename;
+        
+        if (!Storage::disk('local')->exists($path)) {
+            abort(404, 'Image not found');
+        }
+        
+        $file = Storage::disk('local')->get($path);
+        $mimeType = Storage::disk('local')->mimeType($path);
+        
+        // Add CORS headers for iframe access
+        return response($file, 200)
+            ->header('Content-Type', $mimeType)
+            ->header('Cache-Control', 'public, max-age=3600')
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Access-Control-Allow-Methods', 'GET');
+    }
+    
     /**
      * Serve document assets (images, etc.) generated during PDF conversion
      */
@@ -1424,18 +1510,21 @@ class DocumentController extends Controller
     private function convertPdfToEditableHtml(Request $request, $pdfPath, Document $document)
     {
         try {
-            // Use the PdfToHtmlService for structured content extraction
-            $htmlService = new \App\Services\PdfToHtmlService();
-            $version = $request->get('pdf_version'); // Get version from request
-            $structuredContent = $htmlService->convertPdfToStructuredHtml($pdfPath, $document->id, $version);
-
-            // Ensure structuredContent is an array
-            if (! is_array($structuredContent)) {
-                throw new \Exception('Invalid structured content returned from PdfToHtmlService');
-            }
-
-            // Build an advanced editable HTML document
-            $html = $this->buildAdvancedEditableHtml($structuredContent, $pdfPath, $document);
+            // Use the PdfToHtmlService with base64 converter for self-contained HTML
+            $pdfToHtmlService = new \App\Services\PdfToHtmlService();
+            
+            // Use the base64 converter for self-contained HTML with individual elements
+            $html = $pdfToHtmlService->convertPdfToSelfContainedHtml($pdfPath);
+            
+            // Build advanced editable HTML interface
+            $html = $this->buildAdvancedEditableHtml([
+                'full_html' => $html,
+                'tables' => [],
+                'text' => '',
+                'images' => [],
+                'styles' => '',
+                'fonts' => [],
+            ], $pdfPath, $document);
 
             return $html;
 
@@ -1483,6 +1572,7 @@ class DocumentController extends Controller
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="' . csrf_token() . '">
+    <meta name="document-id" content="' . $document->id . '">
     <title>PDF Editor</title>';
 
         // Add preserved styles from PDF (filtered and scoped)
@@ -1670,6 +1760,7 @@ class DocumentController extends Controller
             border: 1px solid #dee2e6 !important;
             border-radius: 4px !important;
             transform-origin: top center !important;
+            z-index: 1 !important;
             transition: transform 0.3s ease !important;
             display: inline-block !important;
         }
@@ -1677,10 +1768,11 @@ class DocumentController extends Controller
         /* PDF page container - exact size */
         .pdf-page-container {
             position: relative !important;
-            margin: 0 !important;
-            padding: 20px !important;
+            margin: 20px auto !important;
+            padding: 0 !important;  /* No padding to preserve absolute positions */
             page-break-after: always !important;
             background: white !important;
+            overflow: visible !important;  /* Allow elements to extend if needed */
             width: fit-content !important;
             min-width: 600px !important;
             box-sizing: border-box !important;
@@ -1805,17 +1897,21 @@ class DocumentController extends Controller
         /* Text content */
         .pdf-text {
             white-space: pre-wrap;
-            margin: 20px 0;
-            padding: 10px;
-            line-height: 1.8;
-            font-size: 14px;
-            color: #212529;
-            min-height: 30px;
+            margin: 0;
+            padding: 0;
+            line-height: inherit;
+            font-size: inherit;
+            color: inherit;
+            position: absolute !important;
+            z-index: 100 !important;
+            display: inline-block !important;
+            width: fit-content !important;
+            height: fit-content !important;
         }
         
         .pdf-text[contenteditable="true"] {
             display: inline-block;
-            padding: 2px 5px;
+            padding: 0;
             border: 1px solid transparent;
             border-radius: 3px;
             transition: all 0.2s;
@@ -1835,21 +1931,120 @@ class DocumentController extends Controller
         
         /* Images */
         .pdf-image-container {
-            position: relative;
-            display: inline-block;
-            margin: 20px;
+            position: absolute;  /* Keep absolute for proper PDF positioning */
             cursor: move;
+            transition: all 0.3s ease;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 50 !important;  /* Lower than text but above background */
+            box-sizing: border-box;
+            width: auto !important;
+            height: auto !important;
+        }
+        
+        .pdf-image-container:hover {
+            outline: 2px solid #007bff;
+            outline-offset: 0;
         }
         
         .pdf-image {
+            display: block !important;
+            user-select: none;
+            visibility: visible !important;
+            opacity: 1 !important;
+            object-fit: contain;  /* Preserve aspect ratio */
             max-width: 100%;
-            height: auto;
-            display: block;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            max-height: 100%;
         }
         
         .pdf-image-container.dragging {
-            opacity: 0.5;
+            opacity: 0.7;
+            z-index: 99999 !important;
+        }
+        
+        /* Ensure elements being dragged stay on top */
+        .dragging {
+            z-index: 99999 !important;
+        }
+        
+        /* Draggable elements */
+        .draggable-element {
+            position: absolute !important;
+            cursor: move;
+        }
+        
+        .draggable-element:hover {
+            outline: 1px dashed #007bff;
+            outline-offset: 0;
+        }
+        
+        /* Element controls */
+        .element-controls {
+            position: absolute;
+            top: -30px;
+            right: 0;
+            display: none;
+            background: rgba(255,255,255,0.95);
+            padding: 3px;
+            border-radius: 3px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        
+        .draggable-element:hover .element-controls {
+            display: block !important;
+        }
+        
+        .pdf-image-container.drag-over {
+            border: 2px dashed #007bff;
+            background: rgba(0,123,255,0.1);
+        }
+        
+        /* Image controls overlay */
+        .image-controls {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            display: none;
+            flex-direction: row;
+            gap: 5px;
+            z-index: 100;
+            background: rgba(255,255,255,0.95);
+            padding: 5px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            pointer-events: all !important;
+        }
+        
+        .pdf-image-container:hover .image-controls {
+            display: flex !important;
+            pointer-events: all !important;
+        }
+        
+        .image-control-btn {
+            padding: 5px 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer !important;
+            font-size: 12px;
+            transition: background 0.2s;
+            pointer-events: all !important;
+            position: relative;
+            z-index: 101;
+        }
+        
+        .image-control-btn:hover {
+            background: #0056b3;
+        }
+        
+        .image-control-btn.delete {
+            background: #dc3545;
+        }
+        
+        .image-control-btn.delete:hover {
+            background: #c82333;
         }
         
         .image-resize-handle {
@@ -1859,6 +2054,12 @@ class DocumentController extends Controller
             background: #007bff;
             border: 2px solid white;
             box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .pdf-image-container:hover .image-resize-handle {
+            opacity: 1;
         }
         
         .image-resize-handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
@@ -1866,6 +2067,136 @@ class DocumentController extends Controller
         .image-resize-handle.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
         .image-resize-handle.se { bottom: -5px; right: -5px; cursor: se-resize; }
         
+
+        /* Fix for drag mode - prevent elements from disappearing */
+        body.drag-mode-active .pdf-text {
+            z-index: 100 !important;
+            position: absolute !important;
+        }
+        
+        body.drag-mode-active .pdf-image-container {
+            z-index: 50 !important;
+            position: absolute !important;
+        }
+        
+        body.drag-mode-active .pdf-page-container {
+            z-index: 1 !important;
+        }
+        
+        /* PDF elements proper layering */
+        .pdf-page-container {
+            position: relative !important;
+            z-index: 1 !important;
+        }
+        
+        .pdf-image {
+            pointer-events: none; /* Let container handle events */
+        }
+        
+        .pdf-image-container {
+            pointer-events: all !important;
+        }
+
+        /* === HOVER AREA FIXES === */
+        /* Limit hover areas to exact element bounds */
+        .pdf-text {
+            display: inline-block !important;
+            width: fit-content !important;
+            height: fit-content !important;
+            max-width: none !important;
+            overflow: visible !important;
+        }
+        
+        .pdf-image-container {
+            display: inline-block !important;
+            width: auto !important;
+            height: auto !important;
+            overflow: visible !important;
+        }
+        
+        .draggable-element {
+            display: inline-block !important;
+            width: fit-content !important;
+            height: fit-content !important;
+            overflow: visible !important;
+        }
+        
+        /* Hover states with precise boundaries */
+        .pdf-text:hover {
+            background: rgba(0, 123, 255, 0.05) !important;
+            outline: 1px solid rgba(0, 123, 255, 0.3);
+            outline-offset: 0;
+        }
+        
+        .pdf-image-container:hover {
+            outline: 2px solid #007bff;
+            outline-offset: 0;
+        }
+        
+        .draggable-element:hover {
+            outline: 1px dashed #007bff;
+            outline-offset: 0;
+        }
+        
+        /* Keep image controls inside the container */
+        .image-controls {
+            position: absolute;
+            top: 5px !important;
+            right: 5px !important;
+            display: none;
+            background: rgba(255, 255, 255, 0.98);
+            padding: 5px 8px;
+            gap: 5px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            pointer-events: all !important;
+            white-space: nowrap;
+            z-index: 1001;
+        }
+        
+        .element-controls {
+            position: absolute;
+            top: -35px !important;
+            right: 0;
+            display: none;
+            background: rgba(255, 255, 255, 0.98);
+            padding: 5px 8px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1001;
+            pointer-events: auto;
+            white-space: nowrap;
+        }
+        
+        /* Show controls on hover without expanding element */
+        .pdf-image-container:hover .image-controls,
+        .draggable-element:hover .element-controls,
+        .pdf-text:hover .element-controls {
+            display: flex !important;
+        }
+        
+        /* Drag mode hover states */
+        body.drag-mode-active .pdf-text:hover,
+        body.drag-mode-active .pdf-image-container:hover,
+        body.drag-mode-active .draggable-element:hover {
+            outline: 2px dashed #3498db;
+            outline-offset: 0;
+        }
+        
+        /* Remove any margin/padding that could expand hover area */
+        .pdf-text[contenteditable="true"] {
+            margin: 0 !important;
+            padding: 1px 2px !important;
+        }
+        
+        /* Ensure images do not have extra space */
+        .pdf-image {
+            display: block;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        /* === END HOVER AREA FIXES === */
         /* Status bar */
         .status-bar {
             position: fixed;
@@ -2097,7 +2428,7 @@ class DocumentController extends Controller
             ];
         }
 
-        // If we have full_html in combined mode, use it directly as it's already formatted
+        // If we have full_html in combined mode, use it but process images properly
         if ($mode === 'combined' && ! empty($content['full_html'])) {
             // Make the full HTML editable
             $editableHtml = $content['full_html'];
@@ -2107,8 +2438,68 @@ class DocumentController extends Controller
                 $editableHtml = '<div class="pdf-document">' . $editableHtml . '</div>';
             }
 
-            // Make all content editable
-            $editableHtml = str_replace('<div class="pdf-document">', '<div class="pdf-document" contenteditable="true">', $editableHtml);
+            // Process images to add proper containers and controls
+            $imageIndex = 0;
+            $editableHtml = preg_replace_callback(
+                '/<img([^>]*?)class="pdf-image"([^>]*?)\/?>/',
+                function ($matches) use (&$imageIndex) {
+                    $imgTag = $matches[0];
+                    $attributes1 = $matches[1];
+                    $attributes2 = $matches[2];
+                    
+                    // Extract positioning from style attribute
+                    $containerStyle = '';
+                    $imgStyle = '';
+                    if (preg_match('/style="([^"]*)"/', $attributes1 . $attributes2, $styleMatch)) {
+                        $fullStyle = $styleMatch[1];
+                        
+                        // Extract position-related styles for container
+                        if (preg_match('/left:\s*([^;]+);/', $fullStyle, $leftMatch)) {
+                            $containerStyle .= 'left:' . $leftMatch[1] . ';';
+                        }
+                        if (preg_match('/top:\s*([^;]+);/', $fullStyle, $topMatch)) {
+                            $containerStyle .= 'top:' . $topMatch[1] . ';';
+                        }
+                        if (preg_match('/width:\s*([^;]+);/', $fullStyle, $widthMatch)) {
+                            $containerStyle .= 'width:' . $widthMatch[1] . ';';
+                            $imgStyle .= 'width:100%;';
+                        }
+                        if (preg_match('/height:\s*([^;]+);/', $fullStyle, $heightMatch)) {
+                            $containerStyle .= 'height:' . $heightMatch[1] . ';';
+                            $imgStyle .= 'height:100%;';
+                        }
+                    }
+                    
+                    // Build the wrapped image with container preserving exact position
+                    $wrappedImg = '<div class="pdf-image-container" style="' . $containerStyle . '" draggable="true" data-image-index="' . $imageIndex . '">';
+                    
+                    // Keep the img tag simple with just the source
+                    $imgTagClean = preg_replace('/style="[^"]*"/', '', $imgTag);
+                    $imgTagClean = str_replace('class="pdf-image"', 'class="pdf-image" id="image_' . $imageIndex . '" style="' . $imgStyle . 'display:block;"', $imgTagClean);
+                    
+                    $wrappedImg .= $imgTagClean;
+                    
+                    // Add controls
+                    $wrappedImg .= '<div class="image-controls">';
+                    $wrappedImg .= '<button class="image-control-btn" onclick="replaceImage(' . $imageIndex . ')">🔄 Remplacer</button>';
+                    $wrappedImg .= '<button class="image-control-btn delete" onclick="deleteImage(' . $imageIndex . ')">🗑️ Supprimer</button>';
+                    $wrappedImg .= '</div>';
+                    
+                    // Add resize handles
+                    $wrappedImg .= '<div class="image-resize-handle nw" data-handle="nw"></div>';
+                    $wrappedImg .= '<div class="image-resize-handle ne" data-handle="ne"></div>';
+                    $wrappedImg .= '<div class="image-resize-handle sw" data-handle="sw"></div>';
+                    $wrappedImg .= '<div class="image-resize-handle se" data-handle="se"></div>';
+                    $wrappedImg .= '</div>';
+                    
+                    $imageIndex++;
+                    return $wrappedImg;
+                },
+                $editableHtml
+            );
+
+            // Make text content editable
+            $editableHtml = preg_replace('/<span([^>]*?)class="pdf-text"([^>]*?)>/', '<span$1class="pdf-text"$2 contenteditable="true">', $editableHtml);
 
             // Ensure tables are editable
             $editableHtml = preg_replace('/<td([^>]*)>/i', '<td$1 contenteditable="true">', $editableHtml);
@@ -2236,6 +2627,12 @@ class DocumentController extends Controller
                     $html .= '<img src="' . $image . '" class="pdf-image" id="image_' . $imgIndex . '" />';
                 }
 
+                // Add image controls
+                $html .= '<div class="image-controls">';
+                $html .= '<button class="image-control-btn" onclick="replaceImage(' . $imgIndex . ')">🔄 Remplacer</button>';
+                $html .= '<button class="image-control-btn delete" onclick="deleteImage(' . $imgIndex . ')">🗑️ Supprimer</button>';
+                $html .= '</div>';
+
                 // Add resize handles
                 $html .= '<div class="image-resize-handle nw" data-handle="nw"></div>';
                 $html .= '<div class="image-resize-handle ne" data-handle="ne"></div>';
@@ -2317,6 +2714,25 @@ class DocumentController extends Controller
     private function getAdvancedEditingScript()
     {
         return '<script>
+        // Make functions globally accessible
+        function insertImage() {
+            if (window.insertImage) {
+                window.insertImage();
+            }
+        }
+        
+        function addTextBlock() {
+            if (window.addTextBlock) {
+                window.addTextBlock();
+            }
+        }
+        
+        function addNewTable() {
+            if (window.addNewTable) {
+                window.addNewTable();
+            }
+        }
+        
         // Global variables
         let currentView = "combined";
         let isDragging = false;
@@ -2331,22 +2747,62 @@ class DocumentController extends Controller
         
         // Drag and drop functionality for all editable elements
         function initializeDragAndDrop() {
-            // Make all contenteditable elements draggable
-            const editableElements = document.querySelectorAll(\'[contenteditable="true"]\');
-            editableElements.forEach(element => {
+            // Add controls to existing text elements without them
+            const textElements = document.querySelectorAll(\'.pdf-text:not([data-has-controls])\');
+            textElements.forEach(element => {
+                if (!element.querySelector(\'.element-controls\')) {
+                    const controls = document.createElement(\'div\');
+                    controls.className = \'element-controls\';
+                    controls.style.cssText = \'position: absolute; top: -30px; right: 0; display: none; background: rgba(255,255,255,0.95); padding: 3px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 1000;\';
+                    controls.innerHTML = \'<button class="control-btn" onclick="deleteElement(this.parentElement.parentElement)" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;">🗑️ Supprimer</button>\';
+                    element.appendChild(controls);
+                    element.setAttribute(\'data-has-controls\', \'true\');
+                    element.classList.add(\'draggable-element\');
+                    initializeElementControls(element);
+                }
                 makeDraggable(element);
             });
             
-            // Make images draggable
-            const images = document.querySelectorAll(\'.pdf-content img:not(.pdf-page-background)\');
-            images.forEach(img => {
-                makeDraggable(img);
+            // Make all contenteditable elements draggable
+            const editableElements = document.querySelectorAll(\'[contenteditable="true"]\');
+            editableElements.forEach(element => {
+                if (!element.classList.contains(\'pdf-text\')) {
+                    makeDraggable(element);
+                }
+            });
+            
+            // Make image containers draggable
+            const imageContainers = document.querySelectorAll(\'.pdf-image-container\');
+            imageContainers.forEach(container => {
+                container.classList.add(\'draggable-element\');
+                makeDraggable(container);
             });
             
             // Make tables draggable
             const tables = document.querySelectorAll(\'.pdf-table\');
             tables.forEach(table => {
-                makeDraggable(table);
+                const parent = table.parentElement;
+                if (parent && !parent.classList.contains(\'table-container\')) {
+                    // Wrap table if not already wrapped
+                    const wrapper = document.createElement(\'div\');
+                    wrapper.className = \'table-container draggable-element\';
+                    wrapper.style.cssText = \'position: absolute;\';
+                    table.parentNode.insertBefore(wrapper, table);
+                    wrapper.appendChild(table);
+                    
+                    // Add controls
+                    const controls = document.createElement(\'div\');
+                    controls.className = \'element-controls\';
+                    controls.style.cssText = \'position: absolute; top: -30px; right: 0; display: none; background: rgba(255,255,255,0.95); padding: 3px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 1000;\';
+                    controls.innerHTML = \'<button class="control-btn" onclick="deleteElement(this.parentElement.parentElement)" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;">🗑️ Supprimer</button>\';
+                    wrapper.appendChild(controls);
+                    
+                    initializeElementControls(wrapper);
+                    makeDraggable(wrapper);
+                } else if (parent && parent.classList.contains(\'table-container\')) {
+                    parent.classList.add(\'draggable-element\');
+                    makeDraggable(parent);
+                }
             });
         }
         
@@ -2354,47 +2810,86 @@ class DocumentController extends Controller
             // Add drag handle if not already present
             if (!element.dataset.draggable) {
                 element.dataset.draggable = \'true\';
-                element.style.cursor = \'move\';
+                
+                // For images, only make cursor move when hovering over the image itself, not controls
+                if (element.classList.contains(\'pdf-image-container\')) {
+                    const img = element.querySelector(\'.pdf-image\');
+                    if (img) {
+                        img.style.cursor = \'move\';
+                    }
+                    // Images should use absolute positioning
+                    if (!element.style.position || element.style.position === \'static\') {
+                        element.style.position = \'absolute\';
+                    }
+                } else if (element.classList.contains(\'pdf-table\')) {
+                    element.style.cursor = \'move\';
+                    // Tables can use relative positioning
+                    if (!element.style.position || element.style.position === \'static\') {
+                        element.style.position = \'relative\';
+                    }
+                } else {
+                    // For text elements, use relative positioning to avoid z-index issues
+                    element.style.cursor = \'move\';
+                    if (!element.style.position || element.style.position === \'static\') {
+                        element.style.position = \'relative\';
+                    }
+                }
                 
                 let isDragging = false;
                 let startX = 0;
                 let startY = 0;
                 let initialLeft = 0;
                 let initialTop = 0;
+                let initialTransform = \'\';
                 
-                // Ensure element has position absolute or relative
-                if (!element.style.position || element.style.position === \'static\') {
-                    element.style.position = \'absolute\';
+                // Parse existing position or use transform for relative elements
+                if (element.style.position === \'absolute\') {
+                    initialLeft = parseInt(element.style.left) || element.offsetLeft || 0;
+                    initialTop = parseInt(element.style.top) || element.offsetTop || 0;
+                    element.style.left = initialLeft + \'px\';
+                    element.style.top = initialTop + \'px\';
+                } else {
+                    // Use transform for relative positioned elements
+                    initialTransform = element.style.transform || \'\';
+                    const match = initialTransform.match(/translate\((-?\d+)px,\s*(-?\d+)px\)/);
+                    if (match) {
+                        initialLeft = parseInt(match[1]) || 0;
+                        initialTop = parseInt(match[2]) || 0;
+                    } else {
+                        initialLeft = 0;
+                        initialTop = 0;
+                    }
                 }
                 
-                // Parse existing position or set defaults
-                initialLeft = parseInt(element.style.left) || element.offsetLeft || 0;
-                initialTop = parseInt(element.style.top) || element.offsetTop || 0;
-                element.style.left = initialLeft + \'px\';
-                element.style.top = initialTop + \'px\';
-                
                 // Add drag start event
-                element.addEventListener(\'mousedown\', function(e) {
-                    // Only start drag if drag mode is active
-                    if (dragModeActive) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        isDragging = true;
-                        startX = e.clientX;
-                        startY = e.clientY;
-                        initialLeft = parseInt(element.style.left) || 0;
-                        initialTop = parseInt(element.style.top) || 0;
-                        
-                        // Add dragging class for visual feedback
-                        element.classList.add(\'dragging\');
-                        element.style.opacity = \'0.7\';
-                        element.style.zIndex = \'1000\';
-                        
-                        // Add mousemove and mouseup listeners to document
-                        document.addEventListener(\'mousemove\', handleDragMove);
-                        document.addEventListener(\'mouseup\', handleDragEnd);
-                    }
-                });
+                const dragTarget = element.classList.contains(\'pdf-image-container\') ? 
+                    element.querySelector(\'.pdf-image\') : element;
+                
+                if (dragTarget) {
+                    dragTarget.addEventListener(\'mousedown\', function(e) {
+                        // Only start drag if drag mode is active
+                        // For images, also check that we\'re not clicking on controls
+                        if (dragModeActive && !e.target.classList.contains(\'image-control-btn\') 
+                            && !e.target.classList.contains(\'image-resize-handle\')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            isDragging = true;
+                            startX = e.clientX;
+                            startY = e.clientY;
+                            initialLeft = parseInt(element.style.left) || 0;
+                            initialTop = parseInt(element.style.top) || 0;
+                            
+                            // Add dragging class for visual feedback
+                            element.classList.add(\'dragging\');
+                            element.style.opacity = \'0.7\';
+                            element.style.zIndex = \'10000\';  // Very high z-index during drag
+                            
+                            // Add mousemove and mouseup listeners to document
+                            document.addEventListener(\'mousemove\', handleDragMove);
+                            document.addEventListener(\'mouseup\', handleDragEnd);
+                        }
+                    });
+                }
                 
                 function handleDragMove(e) {
                     if (!isDragging) return;
@@ -2403,8 +2898,13 @@ class DocumentController extends Controller
                     const deltaX = e.clientX - startX;
                     const deltaY = e.clientY - startY;
                     
-                    element.style.left = (initialLeft + deltaX) + \'px\';
-                    element.style.top = (initialTop + deltaY) + \'px\';
+                    if (element.style.position === \'absolute\') {
+                        element.style.left = (initialLeft + deltaX) + \'px\';
+                        element.style.top = (initialTop + deltaY) + \'px\';
+                    } else {
+                        // Use transform for relative positioned elements
+                        element.style.transform = \'translate(\' + (initialLeft + deltaX) + \'px, \' + (initialTop + deltaY) + \'px)\';
+                    }
                     
                     updateStatus(\'Déplacement en cours... (Relâchez pour terminer)\');
                 }
@@ -2415,7 +2915,20 @@ class DocumentController extends Controller
                     isDragging = false;
                     element.classList.remove(\'dragging\');
                     element.style.opacity = \'1\';
-                    element.style.zIndex = \'auto\';
+                    element.style.zIndex = \'\';
+                    
+                    // Update stored position for next drag
+                    if (element.style.position === \'absolute\') {
+                        initialLeft = parseInt(element.style.left) || 0;
+                        initialTop = parseInt(element.style.top) || 0;
+                    } else {
+                        const transform = element.style.transform;
+                        const match = transform.match(/translate\((-?\d+)px,\s*(-?\d+)px\)/);
+                        if (match) {
+                            initialLeft = parseInt(match[1]) || 0;
+                            initialTop = parseInt(match[2]) || 0;
+                        }
+                    }
                     
                     document.removeEventListener(\'mousemove\', handleDragMove);
                     document.removeEventListener(\'mouseup\', handleDragEnd);
@@ -2526,11 +3039,15 @@ class DocumentController extends Controller
         });
         
         // Initialize drag and drop when page loads
-        setTimeout(function() {
-            initializeDragAndDrop();
-            updateZoomDisplay();
-            updateStatus(\'Prêt - Activez le mode déplacement pour déplacer les éléments\');
-        }, 500);
+        // Use a longer delay to ensure all images are loaded
+        window.addEventListener(\'load\', function() {
+            setTimeout(function() {
+                initializeDragAndDrop();
+                initializeImageHandlers();
+                updateZoomDisplay();
+                updateStatus(\'Prêt - Activez le mode déplacement pour déplacer les éléments\');
+            }, 100);
+        });
         
         // Table operations
         function addTableRow(tableIndex) {
@@ -2649,7 +3166,7 @@ class DocumentController extends Controller
             for (let i = 0; i < table.rows.length; i++) {
                 let row = [];
                 for (let j = 0; j < table.rows[i].cells.length; j++) {
-                    let cellText = table.rows[i].cells[j].innerText.replace(/"/g, \'""\');
+                    let cellText = table.rows[i].cells[j].innerText.replace(/"/g, \'\\"\');
                     row.push(\'"\' + cellText + \'"\');
                 }
                 csv.push(row.join(","));
@@ -2666,48 +3183,334 @@ class DocumentController extends Controller
             updateStatus("Table exported as CSV");
         }
         
-        // Add new elements
-        function addNewTable() {
-            const container = document.querySelector(".view-mode.active");
-            const tableHtml = `
-                <div class="table-container" data-table-index="new_${Date.now()}">
-                    <div class="table-tools">
-                        <button class="table-btn" onclick="this.parentElement.parentElement.remove()">🗑️ Delete Table</button>
-                    </div>
-                    <table class="pdf-table editable-table">
-                        <thead>
-                            <tr>
-                                <th contenteditable="true">Header 1</th>
-                                <th contenteditable="true">Header 2</th>
-                                <th contenteditable="true">Header 3</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td contenteditable="true">Cell 1</td>
-                                <td contenteditable="true">Cell 2</td>
-                                <td contenteditable="true">Cell 3</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            `;
+        // Add new elements - make global for onclick handlers
+        window.addNewTable = function() {
+            // Try to find the first PDF page container
+            let container = document.querySelector(".pdf-page-container");
+            
+            // If no page container, try the main content area
+            if (!container) {
+                container = document.getElementById("pdfContent");
+            }
+            
+            if (!container) {
+                console.error("No suitable container found for adding table");
+                return;
+            }
+            
+            const tableId = \'table_\' + Date.now();
+            const tableHtml = \'<div class="table-container draggable-element" style="position: absolute; left: 50px; top: 100px; background: white; z-index: 10;" data-table-index="\' + tableId + \'" data-element-type="table">\' +
+                \'<div class="element-controls" style="position: absolute; top: -30px; right: 0; display: none; background: rgba(255,255,255,0.95); padding: 3px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">\' +
+                \'<button class="control-btn" onclick="deleteElement(this.parentElement.parentElement)" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;">🗑️ Supprimer</button>\' +
+                \'</div>\' +
+                \'<div class="table-tools">\' +
+                \'<button class="table-btn" onclick="this.parentElement.parentElement.remove()">🗑️ Delete Table</button>\' +
+                \'</div>\' +
+                \'<table class="pdf-table editable-table">\' +
+                \'<thead><tr>\' +
+                \'<th contenteditable="true">Header 1</th>\' +
+                \'<th contenteditable="true">Header 2</th>\' +
+                \'<th contenteditable="true">Header 3</th>\' +
+                \'</tr></thead>\' +
+                \'<tbody><tr>\' +
+                \'<td contenteditable="true">Cell 1</td>\' +
+                \'<td contenteditable="true">Cell 2</td>\' +
+                \'<td contenteditable="true">Cell 3</td>\' +
+                \'</tr></tbody>\' +
+                \'</table>\' +
+                \'</div>\';
             container.insertAdjacentHTML("beforeend", tableHtml);
-            updateStatus("New table added");
-        }
+            
+            // Make the new table draggable
+            const newTable = container.querySelector(\'[data-table-index="\' + tableId + \'"]\');
+            if (newTable) {
+                makeDraggable(newTable);
+                initializeElementControls(newTable);
+            }
+            
+            updateStatus("Nouvelle table ajoutée - Activez le mode déplacement pour la positionner");
+        };
         
-        function addTextBlock() {
-            const container = document.querySelector(".view-mode.active");
-            const textHtml = `
-                <div class="pdf-text" contenteditable="true">
-                    <p>New text block. Start typing here...</p>
-                </div>
-            `;
+        window.addTextBlock = function() {
+            // Try to find the first PDF page container
+            let container = document.querySelector(".pdf-page-container");
+            
+            // If no page container, try the main content area
+            if (!container) {
+                container = document.getElementById("pdfContent");
+            }
+            
+            if (!container) {
+                console.error("No suitable container found for adding text");
+                return;
+            }
+            
+            const textId = \'text_\' + Date.now();
+            const textHtml = \'<div class="pdf-text draggable-element" contenteditable="true" style="position: absolute; left: 50px; top: 50px; padding: 10px; background: rgba(255,255,255,0.95); border: 1px dashed #007bff; min-width: 200px; z-index: 10;" data-text-id="\' + textId + \'" data-element-type="text">\' +
+                \'<div class="element-controls" style="position: absolute; top: -30px; right: 0; display: none; background: rgba(255,255,255,0.95); padding: 3px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">\' +
+                \'<button class="control-btn" onclick="deleteElement(this.parentElement.parentElement)" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;">🗑️ Supprimer</button>\' +
+                \'</div>\' +
+                \'<p>Nouveau bloc de texte. Cliquez pour éditer...</p>\' +
+                \'</div>\';
             container.insertAdjacentHTML("beforeend", textHtml);
-            updateStatus("Text block added");
+            
+            // Make the new text block draggable
+            const newText = container.querySelector(\'[data-text-id="\' + textId + \'"]\');
+            if (newText) {
+                makeDraggable(newText);
+                initializeElementControls(newText);
+            }
+            
+            updateStatus("Nouveau texte ajouté - Activez le mode déplacement pour le positionner");
+        };
+        
+        // Initialize when document is ready
+        document.addEventListener("DOMContentLoaded", function() {
+            // Ensure all global functions are available
+            if (!window.insertImage) {
+                console.error("window.insertImage not initialized");
+            }
+            if (!window.replaceImage) {
+                console.error("window.replaceImage not initialized");
+            }
+            if (!window.deleteImage) {
+                console.error("window.deleteImage not initialized");
+            }
+        });
+        
+        // Simple insertImage function with server upload
+        window.insertImage = async function() {
+            console.log("insertImage called - using server upload");
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = "image/*";
+            
+            input.addEventListener("change", async function(e) {
+                console.log("File input change event fired");
+                console.log("Files:", e.target.files);
+                const file = e.target.files && e.target.files[0];
+                
+                if (file) {
+                    console.log("Processing file:", file.name, file.type, file.size);
+                    
+                    try {
+                        // Show loading indicator
+                        const loadingDiv = document.createElement(\'div\');
+                        loadingDiv.innerHTML = \'Téléchargement de l\\\'image...\';
+                        loadingDiv.style.cssText = \'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border:2px solid #007bff;border-radius:5px;z-index:10000;\';
+                        document.body.appendChild(loadingDiv);
+                        
+                        let imageUrl;
+                        
+                        // Get document ID from meta tag
+                        const documentId = document.querySelector(\'meta[name="document-id"]\')?.content;
+                        
+                        if (documentId) {
+                            console.log("Document ID found:", documentId);
+                            
+                            // Upload image to server
+                            const formData = new FormData();
+                            formData.append(\'image\', file);
+                            
+                            const csrfToken = document.querySelector(\'meta[name="csrf-token"]\')?.content || \'\';
+                            const uploadUrl = `/documents/${documentId}/upload-editor-image`;
+                            
+                            console.log("Uploading to:", uploadUrl);
+                            
+                            const response = await fetch(uploadUrl, {
+                                method: \'POST\',
+                                headers: {
+                                    \'X-CSRF-TOKEN\': csrfToken,
+                                    \'Accept\': \'application/json\'
+                                },
+                                body: formData
+                            });
+                            
+                            const data = await response.json();
+                            console.log("Upload response:", data);
+                            
+                            if (data.success) {
+                                imageUrl = data.url;
+                                console.log("Image uploaded, URL type:", imageUrl.substring(0, 50));
+                                console.log("Full URL length:", imageUrl.length);
+                            } else {
+                                throw new Error(data.error || \'Upload failed\');
+                            }
+                        } else {
+                            console.log("No document ID, using base64");
+                            // Fallback to base64
+                            imageUrl = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = e => resolve(e.target.result);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(file);
+                            });
+                        }
+                        
+                        console.log("Image ready, inserting into document");
+                        
+                        // Try to find the first PDF page container
+                        let container = document.querySelector(".pdf-page-container");
+                        
+                        // If no page container, try the main content area
+                        if (!container) {
+                            container = document.getElementById("pdfContent");
+                        }
+                        
+                        // Also try pdf-document
+                        if (!container) {
+                            container = document.querySelector(".pdf-document");
+                        }
+                        
+                        // Last resort - any container with pdf-content class
+                        if (!container) {
+                            const pdfContent = document.querySelector(".pdf-content");
+                            if (pdfContent) {
+                                container = pdfContent.querySelector("div");
+                            }
+                        }
+                        
+                        if (!container) {
+                            console.error("No suitable container found for adding image");
+                            return;
+                        }
+                        
+                        const imageIndex = document.querySelectorAll(".pdf-image-container").length;
+                        
+                        // Create a temporary image to get dimensions
+                        const tempImg = new Image();
+                        tempImg.onload = function() {
+                            const width = Math.min(this.naturalWidth, 500);
+                            const height = this.naturalHeight * (width / this.naturalWidth);
+                            
+                            const imageHtml = \'<div class="pdf-image-container draggable-element" style="position: absolute; left: 100px; top: 150px; width: \' + width + \'px; height: \' + height + \'px; z-index: 150;" draggable="true" data-image-index="\' + imageIndex + \'" data-element-type="image">\' +
+                                \'<img src="\' + imageUrl + \'" class="pdf-image" id="image_\' + imageIndex + \'" style="width: 100%; height: 100%; display: block;" />\' +
+                                \'<div class="image-controls">\' +
+                                \'<button class="image-control-btn" onclick="window.replaceImage(\' + imageIndex + \')">🔄 Remplacer</button>\' +
+                                \'<button class="image-control-btn delete" onclick="window.deleteImage(\' + imageIndex + \')">🗑️ Supprimer</button>\' +
+                                \'</div>\' +
+                                \'<div class="image-resize-handle nw" data-handle="nw"></div>\' +
+                                \'<div class="image-resize-handle ne" data-handle="ne"></div>\' +
+                                \'<div class="image-resize-handle sw" data-handle="sw"></div>\' +
+                                \'<div class="image-resize-handle se" data-handle="se"></div>\' +
+                                \'</div>\';
+                            
+                            container.insertAdjacentHTML("beforeend", imageHtml);
+                            
+                            // Make the new image draggable and initialize controls
+                            const newImageContainer = container.querySelector(\'[data-image-index="\' + imageIndex + \'"]\');
+                            if (newImageContainer) {
+                                console.log("New image container inserted with dimensions:", width, "x", height);
+                                
+                                makeDraggable(newImageContainer);
+                                initializeElementControls(newImageContainer);
+                                initializeImageHandlers();
+                                
+                                updateStatus("Image insérée - Activez le mode déplacement pour la positionner");
+                            } else {
+                                console.error("Could not find newly inserted image with index:", imageIndex);
+                            }
+                            
+                            // Remove loading indicator
+                            loadingDiv.remove();
+                        };
+                        
+                        tempImg.onerror = function() {
+                            console.error("Failed to load image");
+                            alert("Erreur lors du chargement de l\'image");
+                            loadingDiv.remove();
+                        };
+                        
+                        tempImg.src = imageUrl;
+                        
+                    } catch (error) {
+                        console.error("Error processing image:", error);
+                        alert("Erreur lors du traitement de l\'image: " + error.message);
+                        if (loadingDiv) loadingDiv.remove();
+                    }
+                } else {
+                    console.log("No file selected");
+                }
+            });
+            
+            // Trigger click on the input
+            console.log("Triggering file dialog...");
+            input.click();
+        };
+        
+        // Delete any element function
+        window.deleteElement = function(element) {
+            if (confirm("Êtes-vous sûr de vouloir supprimer cet élément ?")) {
+                element.remove();
+                updateStatus("Élément supprimé");
+            }
+        };
+        
+        // Initialize controls for elements
+        function initializeElementControls(element) {
+            // For image containers, keep existing dimensions
+            if (element.classList.contains(\'pdf-image-container\')) {
+                // Keep the existing width and height that were set
+                // Do not override them
+            } else {
+                // For text elements, use fit-content
+                if (element.style.width === \'\' || element.style.width === \'auto\') {
+                    element.style.width = \'fit-content\';
+                }
+                if (element.style.height === \'\' || element.style.height === \'auto\') {
+                    element.style.height = \'fit-content\';
+                }
+            }
+            
+            // Show controls on hover
+            element.addEventListener(\'mouseenter\', function(e) {
+                // Only show controls if hovering over the actual element
+                const controls = this.querySelector(\'.element-controls\');
+                const imageControls = this.querySelector(\'.image-controls\');
+                
+                if (controls) {
+                    controls.style.display = \'block\';
+                }
+                if (imageControls) {
+                    imageControls.style.display = \'flex\';
+                }
+            });
+            
+            element.addEventListener(\'mouseleave\', function(e) {
+                const controls = this.querySelector(\'.element-controls\');
+                const imageControls = this.querySelector(\'.image-controls\');
+                
+                // Check if we\'re moving to a child element (like controls)
+                const relatedTarget = e.relatedTarget;
+                
+                // Check if the related target is the controls themselves or their children
+                if (relatedTarget) {
+                    if (this.contains(relatedTarget)) {
+                        return; // Don\'t hide if moving within the element
+                    }
+                    if (controls && controls.contains(relatedTarget)) {
+                        return; // Don\'t hide if moving to controls
+                    }
+                    if (imageControls && imageControls.contains(relatedTarget)) {
+                        return; // Don\'t hide if moving to image controls
+                    }
+                }
+                
+                // Add a small delay to allow clicking on buttons
+                setTimeout(() => {
+                    if (controls && !controls.matches(\':hover\')) {
+                        controls.style.display = \'none\';
+                    }
+                    if (imageControls && !imageControls.matches(\':hover\')) {
+                        imageControls.style.display = \'none\';
+                    }
+                }, 100);
+            });
         }
         
-        function insertImage() {
+        // Replace image function - make it global for onclick handlers
+        window.replaceImage = function(imageIndex) {
+            console.log("Replacing image with index:", imageIndex);
             const input = document.createElement("input");
             input.type = "file";
             input.accept = "image/*";
@@ -2716,51 +3519,147 @@ class DocumentController extends Controller
                 if (file) {
                     const reader = new FileReader();
                     reader.onload = function(event) {
-                        const container = document.querySelector(".view-mode.active");
-                        const imageHtml = `
-                            <div class="pdf-image-container" draggable="true">
-                                <img src="${event.target.result}" class="pdf-image" />
-                                <div class="image-resize-handle nw" data-handle="nw"></div>
-                                <div class="image-resize-handle ne" data-handle="ne"></div>
-                                <div class="image-resize-handle sw" data-handle="sw"></div>
-                                <div class="image-resize-handle se" data-handle="se"></div>
-                            </div>
-                        `;
-                        container.insertAdjacentHTML("beforeend", imageHtml);
-                        initializeImageHandlers();
-                        updateStatus("Image inserted");
+                        // Find image by container data-image-index or by ID
+                        let imgElement = null;
+                        const container = document.querySelector(\'[data-image-index="\' + imageIndex + \'"]\');
+                        if (container) {
+                            imgElement = container.querySelector(\'img\');
+                        } else {
+                            imgElement = document.getElementById("image_" + imageIndex);
+                        }
+                        
+                        if (imgElement) {
+                            // Store current dimensions
+                            const currentWidth = imgElement.offsetWidth;
+                            const currentHeight = imgElement.offsetHeight;
+                            
+                            // Replace the source
+                            imgElement.src = event.target.result;
+                            
+                            // Restore dimensions
+                            imgElement.style.width = currentWidth + "px";
+                            imgElement.style.height = currentHeight + "px";
+                            
+                            updateStatus("Image remplacée");
+                        }
+                    };
+                    reader.onerror = function(error) {
+                        console.error("Error reading file:", error);
+                        alert("Erreur lors de la lecture du fichier image");
                     };
                     reader.readAsDataURL(file);
+                } else {
+                    console.log("No file selected");
                 }
             };
+            
+            // Trigger click on the input
+            console.log("Triggering file dialog...");
             input.click();
-        }
+        };
+        
+        // Delete image function - make it global for onclick handlers
+        window.deleteImage = function(imageIndex) {
+            console.log("Deleting image with index:", imageIndex);
+            if (confirm("Êtes-vous sûr de vouloir supprimer cette image ?")) {
+                const container = document.querySelector(\'[data-image-index="\' + imageIndex + \'"]\');
+                if (container) {
+                    container.remove();
+                    updateStatus("Image supprimée");
+                }
+            }
+        };
         
         // Image drag and resize
         function initializeImageHandlers() {
-            // Drag functionality
+            // Enhanced drag functionality for images
             document.querySelectorAll(".pdf-image-container").forEach(container => {
+                // Remove old listeners first
+                container.removeEventListener("dragstart", handleDragStart);
+                container.removeEventListener("dragend", handleDragEnd);
+                
+                // Add new enhanced listeners
                 container.addEventListener("dragstart", handleDragStart);
                 container.addEventListener("dragend", handleDragEnd);
+                container.addEventListener("dragover", handleDragOver);
+                container.addEventListener("drop", handleDrop);
+                
+                // Double-click to replace
+                container.addEventListener("dblclick", function(e) {
+                    const imageIndex = this.dataset.imageIndex;
+                    if (imageIndex !== undefined) {
+                        replaceImage(imageIndex);
+                    }
+                });
             });
             
             // Resize functionality
             document.querySelectorAll(".image-resize-handle").forEach(handle => {
+                handle.removeEventListener("mousedown", handleResizeStart);
                 handle.addEventListener("mousedown", handleResizeStart);
             });
+            
+            // Make the document area accept drops
+            const pdfContent = document.getElementById("pdfContent");
+            if (pdfContent) {
+                pdfContent.addEventListener("dragover", function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                });
+                
+                pdfContent.addEventListener("drop", function(e) {
+                    e.preventDefault();
+                    if (draggedElement && draggedElement.classList.contains("pdf-image-container")) {
+                        // Calculate new position
+                        const rect = pdfContent.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        
+                        // Apply absolute positioning if not already
+                        if (!draggedElement.style.position || draggedElement.style.position === "static") {
+                            draggedElement.style.position = "absolute";
+                        }
+                        
+                        // Set new position
+                        draggedElement.style.left = (x - draggedElement.offsetWidth / 2) + "px";
+                        draggedElement.style.top = (y - draggedElement.offsetHeight / 2) + "px";
+                        
+                        updateStatus("Image déplacée");
+                    }
+                });
+            }
         }
+        
+        let draggedElement = null;
         
         function handleDragStart(e) {
             isDragging = true;
-            currentImage = e.target;
-            e.target.classList.add("dragging");
+            draggedElement = e.currentTarget;
+            e.currentTarget.classList.add("dragging");
             e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/html", e.currentTarget.innerHTML);
         }
         
         function handleDragEnd(e) {
             isDragging = false;
-            e.target.classList.remove("dragging");
-            updateStatus("Image repositioned");
+            e.currentTarget.classList.remove("dragging");
+            draggedElement = null;
+            updateStatus("Image repositionnée");
+        }
+        
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = "move";
+            return false;
+        }
+        
+        function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+            return false;
         }
         
         function handleResizeStart(e) {
@@ -2950,10 +3849,87 @@ class DocumentController extends Controller
             }, 5000);
         });
         
+        // Context menu for images
+        function initializeContextMenu() {
+            // Remove existing context menu if any
+            const existingMenu = document.getElementById("imageContextMenu");
+            if (existingMenu) {
+                existingMenu.remove();
+            }
+            
+            // Create context menu
+            const contextMenu = document.createElement("div");
+            contextMenu.id = "imageContextMenu";
+            contextMenu.style.cssText = \'position: fixed; background: white; border: 1px solid #ccc; border-radius: 4px; padding: 5px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 10000; display: none;\';
+            contextMenu.innerHTML = \'<div class="context-menu-item" onclick="contextMenuReplace()" style="padding: 8px 20px; cursor: pointer; hover: background: #f0f0f0;">🔄 Remplacer image</div>\' +
+                \'<div class="context-menu-item" onclick="contextMenuDelete()" style="padding: 8px 20px; cursor: pointer; hover: background: #f0f0f0;">🗑️ Supprimer image</div>\' +
+                \'<div class="context-menu-item" onclick="contextMenuDuplicate()" style="padding: 8px 20px; cursor: pointer; hover: background: #f0f0f0;">📋 Dupliquer image</div>\';
+            document.body.appendChild(contextMenu);
+            
+            let currentImageIndex = null;
+            
+            // Add right-click handler to images
+            document.addEventListener("contextmenu", function(e) {
+                const imageContainer = e.target.closest(".pdf-image-container");
+                if (imageContainer) {
+                    e.preventDefault();
+                    currentImageIndex = imageContainer.dataset.imageIndex;
+                    contextMenu.style.left = e.clientX + "px";
+                    contextMenu.style.top = e.clientY + "px";
+                    contextMenu.style.display = "block";
+                }
+            });
+            
+            // Hide context menu on click elsewhere
+            document.addEventListener("click", function() {
+                contextMenu.style.display = "none";
+            });
+            
+            // Context menu functions
+            window.contextMenuReplace = function() {
+                if (currentImageIndex !== null) {
+                    replaceImage(currentImageIndex);
+                }
+                contextMenu.style.display = "none";
+            };
+            
+            window.contextMenuDelete = function() {
+                if (currentImageIndex !== null) {
+                    deleteImage(currentImageIndex);
+                }
+                contextMenu.style.display = "none";
+            };
+            
+            window.contextMenuDuplicate = function() {
+                if (currentImageIndex !== null) {
+                    const original = document.querySelector(\'[data-image-index="\' + currentImageIndex + \'"]\');
+                    if (original) {
+                        const clone = original.cloneNode(true);
+                        const newIndex = document.querySelectorAll(".pdf-image-container").length;
+                        clone.dataset.imageIndex = newIndex;
+                        const img = clone.querySelector(".pdf-image");
+                        if (img) img.id = "image_" + newIndex;
+                        // Update button onclick attributes
+                        const buttons = clone.querySelectorAll(".image-control-btn");
+                        buttons[0].setAttribute("onclick", "replaceImage(" + newIndex + ")");
+                        buttons[1].setAttribute("onclick", "deleteImage(" + newIndex + ")");
+                        // Offset position slightly
+                        clone.style.left = (parseInt(clone.style.left || 0) + 20) + "px";
+                        clone.style.top = (parseInt(clone.style.top || 0) + 20) + "px";
+                        document.getElementById("pdfContent").appendChild(clone);
+                        initializeImageHandlers();
+                        updateStatus("Image dupliquée");
+                    }
+                }
+                contextMenu.style.display = "none";
+            };
+        }
+        
         // Initialize on load
         document.addEventListener("DOMContentLoaded", function() {
             initializeImageHandlers();
-            updateStatus("Editor ready");
+            initializeContextMenu();
+            updateStatus("Éditeur prêt - Double-cliquez sur une image pour la remplacer");
         });
         </script>';
     }

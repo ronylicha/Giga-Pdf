@@ -4,11 +4,6 @@
         <div class="editor-toolbar">
             <!-- File Actions -->
             <div class="toolbar-group">
-                <button @click="saveDocument" class="toolbar-btn" title="Sauvegarder (Ctrl+S)">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V2" />
-                    </svg>
-                </button>
                 <button @click="exportPDF" class="toolbar-btn" title="Exporter en PDF">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -522,22 +517,42 @@ onMounted(async () => {
     // Initialize PDF Editor Core
     editor = new PDFEditorCore();
     
+    // Load improved CSS for better rendering
+    const improvedCSS = document.createElement('link');
+    improvedCSS.rel = 'stylesheet';
+    improvedCSS.href = '/css/pdf-editor-improved.css';
+    document.head.appendChild(improvedCSS);
+    
     // Load initial content
     if (props.initialContent) {
-        // Clean initial content if provided
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = props.initialContent;
+        console.log('Loading initial content, length:', props.initialContent.length);
         
-        // Remove any toolbars or UI elements
-        const unwantedElements = tempDiv.querySelectorAll(
-            '.editor-toolbar, .toolbar, .pdf-toolbar, .control-panel, .tools-panel, ' +
-            '.resize-handle, .pdf-controls, .editor-controls, .button-panel'
-        );
-        unwantedElements.forEach(el => el.remove());
+        // Parse the HTML to extract just the body content
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(props.initialContent, 'text/html');
         
-        // Extract only PDF content
-        const pdfContent = tempDiv.querySelector('#pdfContent') || tempDiv.querySelector('.pdf-content');
-        editorContent.value = pdfContent ? pdfContent.innerHTML : tempDiv.innerHTML;
+        // Look for #pdfContent first
+        let content = doc.querySelector('#pdfContent');
+        
+        if (content) {
+            console.log('Found #pdfContent div');
+            editorContent.value = content.innerHTML;
+        } else {
+            // Fallback: look for pdf-page elements directly
+            const pages = doc.querySelectorAll('.pdf-page');
+            if (pages.length > 0) {
+                console.log('Found', pages.length, 'pdf-page elements');
+                const wrapper = document.createElement('div');
+                pages.forEach(page => wrapper.appendChild(page.cloneNode(true)));
+                editorContent.value = wrapper.innerHTML;
+            } else {
+                // Last fallback: use body content
+                console.log('Using body content as fallback');
+                editorContent.value = doc.body ? doc.body.innerHTML : props.initialContent;
+            }
+        }
+        
+        console.log('Editor content set, pages:', (editorContent.value.match(/pdf-page/g) || []).length);
     } else if (props.document) {
         await loadDocumentContent();
     }
@@ -593,6 +608,12 @@ async function loadDocumentContent() {
             // Remove any old UI elements
             const uiElements = tempDiv.querySelectorAll('.resize-handle, .pdf-controls, .editor-controls');
             uiElements.forEach(el => el.remove());
+            
+            // Fix duplicate text issues
+            removeDuplicateText(tempDiv);
+            
+            // Fix image layering
+            fixImageLayering(tempDiv);
             
             // Get only the PDF content
             const pdfContent = tempDiv.querySelector('#pdfContent') || tempDiv.querySelector('.pdf-content');
@@ -1066,6 +1087,82 @@ function sendToBack() {
     editor.saveState();
 }
 
+// Helper functions to fix rendering issues
+function removeDuplicateText(container) {
+    const textMap = new Map();
+    const allTextElements = container.querySelectorAll('p, span, div');
+    
+    allTextElements.forEach(element => {
+        const text = element.textContent?.trim();
+        if (!text) return;
+        
+        // Get position
+        const style = element.getAttribute('style') || '';
+        const leftMatch = style.match(/left:\s*([0-9.]+)/);
+        const topMatch = style.match(/top:\s*([0-9.]+)/);
+        
+        const left = leftMatch ? parseFloat(leftMatch[1]) : 0;
+        const top = topMatch ? parseFloat(topMatch[1]) : 0;
+        
+        // Create unique key based on position and text
+        const key = `${Math.round(left/10)}_${Math.round(top/10)}_${text.substring(0, 20)}`;
+        
+        if (textMap.has(key)) {
+            // Mark as duplicate
+            element.setAttribute('data-duplicate', 'true');
+            element.classList.add('duplicate-text');
+        } else {
+            textMap.set(key, element);
+        }
+    });
+}
+
+function fixImageLayering(container) {
+    const images = container.querySelectorAll('img');
+    
+    images.forEach(img => {
+        const width = parseInt(img.getAttribute('width') || '0');
+        const height = parseInt(img.getAttribute('height') || '0');
+        const src = img.getAttribute('src') || '';
+        
+        // Check if it's likely a background image
+        if (width > 500 || height > 700) {
+            img.classList.add('background-image');
+            img.style.position = 'absolute';
+            img.style.zIndex = '0';
+            img.style.top = '0';
+            img.style.left = '0';
+            img.style.pointerEvents = 'none';
+        } 
+        // Check if it's likely a profile/author image
+        else if (src.includes('profile') || src.includes('author') || src.includes('avatar') || 
+                 (width > 50 && width < 200 && height > 50 && height < 200 && width === height)) {
+            img.classList.add('author-image');
+            img.style.borderRadius = '50%';
+            img.style.zIndex = '15';
+            img.style.position = 'relative';
+            img.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+        }
+        // Regular content images
+        else {
+            img.style.position = 'relative';
+            img.style.zIndex = '5';
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+        }
+    });
+    
+    // Ensure text is above backgrounds
+    const textElements = container.querySelectorAll('p, span, h1, h2, h3, h4, h5, h6');
+    textElements.forEach(el => {
+        const currentZ = parseInt(el.style.zIndex || '0');
+        if (currentZ < 10) {
+            el.style.zIndex = '10';
+            el.style.position = 'relative';
+        }
+    });
+}
+
 // Layers panel
 function selectElement(elementData) {
     editor.clearSelection();
@@ -1441,10 +1538,10 @@ function rgbToHex(rgb) {
     flex: 1;
     position: relative;
     padding: 0;
+    padding-right: 25px;
     margin: 0;
     overflow: auto;
     background: #f5f5f5;
-    padding: 0;
     display: flex;
     justify-content: center;
     align-items: flex-start;

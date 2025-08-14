@@ -1,0 +1,83 @@
+/* Navigation fixes for consistent alignment */
+
+/* Ensure all navigation items have consistent height and alignment */
+.navigation-container {
+    display: flex;
+    align-items: stretch;
+    height: 100%;
+}
+
+/* Ensure dropdowns and links align perfectly */
+.navigation-container > * {
+    display: flex;
+    align-items: center;
+}
+
+/* Fix for dropdown triggers to match NavLink height */
+.nav-dropdown-trigger {
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    padding-top: 0.25rem; /* Match NavLink pt-1 */
+    padding-bottom: 0;
+    padding-left: 0.25rem; /* Match NavLink px-1 */
+    padding-right: 0.25rem;
+}
+
+/* Ensure border-bottom aligns properly */
+.nav-item-border {
+    border-bottom-width: 2px;
+    margin-bottom: -2px; /* Compensate for border to align with container */
+}
+
+/* Fix dropdown container position */
+.nav-dropdown-container {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+}
+
+/* Responsive adjustments */
+@media (min-width: 640px) {
+    /* Desktop navigation alignment */
+    .sm\:nav-items-center {
+        align-items: center !important;
+    }
+    
+    /* Ensure consistent spacing */
+    .sm\:nav-spacing {
+        gap: 2rem; /* space-x-8 equivalent */
+    }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    .dark\:nav-border-color {
+        border-color: rgb(55 65 81); /* gray-700 */
+    }
+}
+
+/* Animation for dropdown arrow */
+.nav-dropdown-arrow {
+    transition: transform 200ms ease-in-out;
+}
+
+.nav-dropdown-arrow.open {
+    transform: rotate(180deg);
+}
+
+/* Fix for active state border positioning */
+.nav-link-active {
+    position: relative;
+}
+
+.nav-link-active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: currentColor;
+}

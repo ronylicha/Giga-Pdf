@@ -41,8 +41,8 @@ trait BelongsToTenant
                     throw new StorageQuotaExceededException(
                         sprintf(
                             "Quota de stockage dépassé. Utilisé: %s / Maximum: %s",
-                            $this->formatBytes($currentUsage),
-                            $this->formatBytes($maxStorage)
+                            self::formatBytes($currentUsage),
+                            self::formatBytes($maxStorage)
                         )
                     );
                 }
@@ -53,8 +53,8 @@ trait BelongsToTenant
                     throw new \Exception(
                         sprintf(
                             "Fichier trop volumineux. Taille: %s / Maximum: %s",
-                            $this->formatBytes($model->size),
-                            $this->formatBytes($maxFileSize)
+                            self::formatBytes($model->size),
+                            self::formatBytes($maxFileSize)
                         )
                     );
                 }
@@ -105,7 +105,7 @@ trait BelongsToTenant
     /**
      * Formater les bytes en format lisible
      */
-    private function formatBytes($bytes, $precision = 2): string
+    private static function formatBytes($bytes, $precision = 2): string
     {
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
 

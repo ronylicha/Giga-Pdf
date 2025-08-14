@@ -80,7 +80,7 @@ class CreateTenant extends Command
                 'features' => $this->getDefaultFeatures(),
                 'max_storage_gb' => 1,
                 'max_users' => 5,
-                'max_file_size_mb' => 25,
+                'max_file_size_mb' => 50,
                 'is_active' => true,
             ]);
 

@@ -90,6 +90,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::delete('/{document}', [DocumentController::class, 'destroy'])->name('destroy');
             Route::get('/{document}/download', [DocumentController::class, 'download'])->name('download');
             Route::get('/{document}/preview', [DocumentController::class, 'preview'])->name('preview');
+            Route::get('/{document}/thumbnail', [DocumentController::class, 'thumbnail'])->name('thumbnail');
             Route::get('/{document}/serve', [DocumentController::class, 'serve'])->name('serve');
             Route::get('/{document}/extract-content', [DocumentController::class, 'extractContent'])->name('extract-content');
             Route::post('/{document}/update-content', [DocumentController::class, 'updateContent'])->name('update-content');

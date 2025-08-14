@@ -60,11 +60,11 @@ class RegisteredUserController extends Controller
                 'slug' => $slug,
                 'max_storage_gb' => 1, // 1GB storage per account
                 'max_users' => 5, // 5 users par défaut
-                'max_file_size_mb' => 25, // 25MB per file
+                'max_file_size_mb' => 50, // 50MB per file
                 'settings' => [
                     'max_users' => 5,
                     'max_storage_gb' => 1,
-                    'max_file_size_mb' => 25,
+                    'max_file_size_mb' => 50,
                     'features' => [
                         'ocr' => true,
                         'conversion' => true,

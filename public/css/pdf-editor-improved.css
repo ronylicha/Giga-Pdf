@@ -1,0 +1,190 @@
+/* PDF Editor Improved Styles */
+
+/* Fix for duplicate text and overlapping elements */
+.pdf-pages-wrapper {
+    position: relative;
+    background: white;
+    overflow: hidden;
+}
+
+/* Prevent text duplication */
+.pdf-pages-wrapper p,
+.pdf-pages-wrapper span,
+.pdf-pages-wrapper div {
+    position: relative;
+    z-index: 10;
+}
+
+/* Background images handling */
+.pdf-pages-wrapper img.background-image,
+.pdf-pages-wrapper img[style*="z-index:-1"],
+.pdf-pages-wrapper img[style*="z-index: -1"] {
+    position: absolute !important;
+    top: 0;
+    left: 0;
+    z-index: 0 !important;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Regular content images */
+.pdf-pages-wrapper img:not(.background-image):not([style*="z-index:-1"]):not([style*="z-index: -1"]) {
+    position: relative;
+    z-index: 5;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Author/profile images */
+.pdf-pages-wrapper img.author-image,
+.pdf-pages-wrapper img.profile-image,
+.pdf-pages-wrapper img[src*="profile"],
+.pdf-pages-wrapper img[src*="author"],
+.pdf-pages-wrapper img[src*="avatar"] {
+    border-radius: 50%;
+    z-index: 15 !important;
+    position: relative;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Fix for text shadows and readability */
+.pdf-pages-wrapper p,
+.pdf-pages-wrapper span,
+.pdf-pages-wrapper h1,
+.pdf-pages-wrapper h2,
+.pdf-pages-wrapper h3,
+.pdf-pages-wrapper h4,
+.pdf-pages-wrapper h5,
+.pdf-pages-wrapper h6 {
+    text-shadow: 0 0 3px rgba(255,255,255,0.8),
+                 0 0 5px rgba(255,255,255,0.6);
+}
+
+/* Ensure proper layering */
+.pdf-container,
+#pdfContent {
+    position: relative;
+}
+
+.pdf-page {
+    position: relative;
+    background: white;
+    overflow: hidden;
+}
+
+/* Fix for absolute positioned elements */
+.pdf-pages-wrapper [style*="position:absolute"],
+.pdf-pages-wrapper [style*="position: absolute"] {
+    z-index: inherit;
+}
+
+/* Text elements should be above backgrounds */
+.pdf-pages-wrapper .text-element,
+.pdf-pages-wrapper .pdf-text {
+    position: relative;
+    z-index: 10 !important;
+}
+
+/* Card-like containers */
+.pdf-pages-wrapper .card,
+.pdf-pages-wrapper .content-card,
+.pdf-pages-wrapper [class*="card"] {
+    position: relative;
+    z-index: 5;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 15px;
+    margin: 10px 0;
+}
+
+/* Fix for overlapping text by removing duplicates */
+.pdf-pages-wrapper .duplicate-text,
+.pdf-pages-wrapper [data-duplicate="true"] {
+    display: none !important;
+}
+
+/* Improved text selection */
+.pdf-pages-wrapper ::selection {
+    background: rgba(0, 123, 255, 0.3);
+    color: inherit;
+}
+
+/* Fix for tables */
+.pdf-pages-wrapper table {
+    position: relative;
+    z-index: 5;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.pdf-pages-wrapper td,
+.pdf-pages-wrapper th {
+    position: relative;
+    z-index: 10;
+    padding: 8px;
+    border: 1px solid #ddd;
+}
+
+/* Ensure editable content is interactive */
+.pdf-pages-wrapper [contenteditable="true"] {
+    position: relative;
+    z-index: 20 !important;
+    cursor: text;
+    outline: none;
+    min-height: 1em;
+}
+
+.pdf-pages-wrapper [contenteditable="true"]:hover {
+    background: rgba(255, 235, 59, 0.1);
+}
+
+.pdf-pages-wrapper [contenteditable="true"]:focus {
+    background: rgba(255, 235, 59, 0.2);
+    outline: 2px solid #007bff;
+}
+
+/* Fix specific layout issues */
+.pdf-pages-wrapper .author-section,
+.pdf-pages-wrapper .author-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: relative;
+    z-index: 10;
+}
+
+/* Prevent background bleed-through */
+.pdf-pages-wrapper > div {
+    background: white;
+}
+
+/* Handle page breaks properly */
+@media print {
+    .pdf-page {
+        page-break-after: always;
+        page-break-inside: avoid;
+    }
+}
+
+/* Animation for loading */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.pdf-pages-wrapper {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .pdf-pages-wrapper {
+        padding: 10px;
+    }
+    
+    .pdf-page {
+        transform-origin: top left;
+        transform: scale(0.9);
+    }
+}

@@ -4,6 +4,7 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
+import NavDropdown from '@/Components/NavDropdown.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
 import ImpersonationBanner from '@/Components/ImpersonationBanner.vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
@@ -44,7 +45,7 @@ onMounted(() => {
 
                             <!-- Navigation Links -->
                             <div
-                                class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex"
+                                class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex items-stretch"
                             >
                                 <NavLink
                                     :href="route('dashboard')"
@@ -54,16 +55,14 @@ onMounted(() => {
                                 </NavLink>
                                 
                                 <!-- Documents Menu (not for super admin) -->
-                                <Dropdown v-if="$page.props.auth.user?.role !== 'super-admin'" align="left" width="48">
+                                <NavDropdown 
+                                    v-if="$page.props.auth.user?.role !== 'super-admin'" 
+                                    align="left" 
+                                    width="48"
+                                    :active-routes="['documents.*', 'conversions.*']"
+                                >
                                     <template #trigger>
-                                        <span class="inline-flex rounded-md">
-                                            <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
-                                                Documents
-                                                <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                                </svg>
-                                            </button>
-                                        </span>
+                                        Documents
                                     </template>
 
                                     <template #content>
@@ -79,19 +78,17 @@ onMounted(() => {
                                             Conversions
                                         </DropdownLink>
                                     </template>
-                                </Dropdown>
+                                </NavDropdown>
                                 
                                 <!-- Outils PDF Menu (not for super admin) -->
-                                <Dropdown v-if="$page.props.auth.user?.role !== 'super-admin'" align="left" width="48">
+                                <NavDropdown 
+                                    v-if="$page.props.auth.user?.role !== 'super-admin'" 
+                                    align="left" 
+                                    width="48"
+                                    :active-routes="['tools.*', 'pdf-advanced.*']"
+                                >
                                     <template #trigger>
-                                        <span class="inline-flex rounded-md">
-                                            <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
-                                                Outils PDF
-                                                <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                                </svg>
-                                            </button>
-                                        </span>
+                                        Outils PDF
                                     </template>
 
                                     <template #content>
@@ -157,19 +154,17 @@ onMounted(() => {
                                             📝 Formulaires PDF
                                         </DropdownLink>
                                     </template>
-                                </Dropdown>
+                                </NavDropdown>
                                 
                                 <!-- Super Admin Menu -->
-                                <Dropdown v-if="$page.props.auth.user?.role === 'super-admin'" align="left" width="48">
+                                <NavDropdown 
+                                    v-if="$page.props.auth.user?.role === 'super-admin'" 
+                                    align="left" 
+                                    width="48"
+                                    :active-routes="['tenants.*', 'super-admin.*']"
+                                >
                                     <template #trigger>
-                                        <span class="inline-flex rounded-md">
-                                            <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
-                                                Super Admin
-                                                <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                                </svg>
-                                            </button>
-                                        </span>
+                                        Super Admin
                                     </template>
 
                                     <template #content>
@@ -197,19 +192,17 @@ onMounted(() => {
                                             Laravel Horizon
                                         </a>
                                     </template>
-                                </Dropdown>
+                                </NavDropdown>
                                 
                                 <!-- Tenant Admin Menu -->
-                                <Dropdown v-if="$page.props.auth.user?.role === 'tenant-admin'" align="left" width="48">
+                                <NavDropdown 
+                                    v-if="$page.props.auth.user?.role === 'tenant-admin'" 
+                                    align="left" 
+                                    width="48"
+                                    :active-routes="['tenant.*', 'admin.certificates.*']"
+                                >
                                     <template #trigger>
-                                        <span class="inline-flex rounded-md">
-                                            <button class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out">
-                                                Administration
-                                                <svg class="ms-2 -me-0.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                                </svg>
-                                            </button>
-                                        </span>
+                                        Administration
                                     </template>
 
                                     <template #content>
@@ -231,7 +224,7 @@ onMounted(() => {
                                             🔐 Certificats
                                         </DropdownLink>
                                     </template>
-                                </Dropdown>
+                                </NavDropdown>
                             </div>
                         </div>
 

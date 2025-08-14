@@ -69,6 +69,7 @@ directories=(
     "database/backups"
     "public/uploads"
     "public/downloads"
+    "public/images"
     "resources/fonts"
     "resources/certificates"
 )
@@ -103,6 +104,7 @@ writable_dirs=(
     "bootstrap/cache"
     "public/uploads"
     "public/downloads"
+    "public/images"
 )
 
 for dir in "${writable_dirs[@]}"; do

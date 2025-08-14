@@ -567,6 +567,40 @@ php artisan monitor:storage-usage
 
 ## Règles Techniques Importantes
 
+### Conversion PDF vers HTML Éditable
+**RÈGLE FONDAMENTALE**: L'éditeur HTML doit TOUJOURS rendre du texte réel et éditable, PAS des images du texte.
+
+#### Principes de base :
+1. **Images uniquement pour les images** : Les images (photos, graphiques, logos) doivent rester des images
+2. **Texte toujours éditable** : Tout le texte doit être extrait et rendu comme du vrai texte HTML éditable
+3. **Préservation du formatage** : Le texte doit conserver son formatage (police, taille, couleur, position)
+4. **Structure en couches** :
+   - Couche de fond : Images et graphiques
+   - Couche de texte : Texte éditable positionné avec précision
+   - Couche d'annotations : Pour les modifications et commentaires
+
+#### Implémentation technique :
+```javascript
+// Structure HTML correcte pour l'éditeur
+<div class="pdf-page">
+  <!-- Couche de fond pour les images/graphiques -->
+  <div class="pdf-background-layer">
+    <img src="background-graphics.png" />
+  </div>
+  
+  <!-- Couche de texte éditable -->
+  <div class="pdf-text-layer">
+    <span contenteditable="true" style="position: absolute; left: 10%; top: 5%;">Texte éditable</span>
+    <p contenteditable="true" style="position: absolute; left: 10%; top: 10%;">Paragraphe éditable</p>
+  </div>
+</div>
+```
+
+#### Méthodes d'extraction du texte :
+1. **pdftotext avec coordonnées** : Pour extraire le texte avec sa position exacte
+2. **pdftohtml avec XML** : Pour obtenir le texte avec le formatage
+3. **OCR seulement si nécessaire** : Uniquement pour les PDFs scannés sans texte sélectionnable
+
 ### PDF.js et Frameworks Réactifs
 **RÈGLE CRITIQUE**: Lors de l'utilisation de PDF.js avec Vue.js, Alpine.js ou tout autre framework réactif, NE JAMAIS stocker les instances PDF dans des propriétés réactives (ref, reactive, data). Les frameworks réactifs transforment les objets en Proxies pour la réactivité, ce qui casse les objets PDF.js.
 

@@ -136,7 +136,7 @@ class DocumentController extends Controller
         }
 
         return Inertia::render('Documents/Upload', [
-            'max_file_size' => $tenant->max_file_size_mb ?? 25,
+            'max_file_size' => $tenant->max_file_size_mb ?? 50,
             'allowed_types' => [
                 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
                 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff',
@@ -386,6 +386,33 @@ class DocumentController extends Controller
     }
 
     /**
+     * Serve document thumbnail
+     */
+    public function thumbnail(Document $document)
+    {
+        $this->authorize('view', $document);
+
+        // Check if thumbnail exists in public disk
+        if (!$document->thumbnail_path || !Storage::disk('public')->exists($document->thumbnail_path)) {
+            // Generate thumbnail on the fly if missing
+            dispatch(new \App\Jobs\GenerateThumbnail($document))->onQueue('high');
+            
+            // Return placeholder image
+            return response()->file(public_path('images/pdf-placeholder.png'), [
+                'Content-Type' => 'image/png',
+                'Cache-Control' => 'no-cache',
+            ]);
+        }
+
+        $path = Storage::disk('public')->path($document->thumbnail_path);
+
+        return response()->file($path, [
+            'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'public, max-age=86400', // Cache for 1 day
+        ]);
+    }
+
+    /**
      * Update document (metadata and annotations)
      */
     public function update(Request $request, Document $document)
@@ -584,46 +611,6 @@ class DocumentController extends Controller
         return Inertia::render('Documents/Search', [
             'query' => $request->q,
             'documents' => $documents,
-        ]);
-    }
-
-    /**
-     * Get document thumbnail
-     */
-    public function thumbnail(Document $document)
-    {
-        $this->authorize('view', $document);
-
-        if (! $document->thumbnail_path) {
-            // Return default thumbnail
-            $defaultPath = public_path('images/default-thumbnail.png');
-            if (file_exists($defaultPath)) {
-                return response()->file($defaultPath);
-            }
-
-            // Generate thumbnail on the fly
-            dispatch(new \App\Jobs\GenerateThumbnail($document))->onQueue('high');
-
-            return response()->json(['message' => 'Thumbnail generation in progress'], 202);
-        }
-
-        $path = Storage::path($document->thumbnail_path);
-
-        if (! file_exists($path)) {
-            // Generate thumbnail on the fly
-            dispatch(new \App\Jobs\GenerateThumbnail($document))->onQueue('high');
-
-            $defaultPath = public_path('images/default-thumbnail.png');
-            if (file_exists($defaultPath)) {
-                return response()->file($defaultPath);
-            }
-
-            return response()->json(['message' => 'Thumbnail not found'], 404);
-        }
-
-        return response()->file($path, [
-            'Content-Type' => 'image/jpeg',
-            'Cache-Control' => 'public, max-age=86400',
         ]);
     }
 
@@ -1486,17 +1473,49 @@ class DocumentController extends Controller
         $this->authorize('update', $document);
 
         try {
+            // ALWAYS clear ALL cache to ensure fresh conversion
+            $cacheKey = 'pdf_html_' . $document->id;
+            Cache::forget($cacheKey);
+            Cache::forget('pdf_conversion_' . $document->id);
+            Cache::forget('document_html_' . $document->id);
+            
+            Log::info('Starting FRESH HTML conversion (all cache cleared)', [
+                'document_id' => $document->id,
+                'original_name' => $document->original_name
+            ]);
+            
             $path = Storage::path($document->stored_name);
 
             // Convert PDF to editable HTML using the primary service. No fallback.
             $html = $this->convertPdfToEditableHtml($request, $path, $document);
+            
+            // Log sample content for debugging
+            $sampleText = '';
+            if (preg_match('/<div[^>]*class="pdf-text"[^>]*>(.*?)<\/div>/s', $html, $matches)) {
+                $sampleText = substr(strip_tags($matches[1]), 0, 100);
+            }
+            
+            Log::info('HTML conversion complete', [
+                'document_id' => $document->id,
+                'html_length' => strlen($html),
+                'sample_text' => $sampleText,
+                'timestamp' => time()
+            ]);
 
             return response()->json([
                 'success' => true,
                 'html' => $html,
-            ]);
+                'timestamp' => time() // Force browser to recognize fresh data
+            ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+              ->header('Pragma', 'no-cache')
+              ->header('Expires', '0');
 
         } catch (Exception $e) {
+            Log::error('Error in convertToHtml', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -1505,34 +1524,127 @@ class DocumentController extends Controller
     }
 
     /**
-     * Convert PDF to editable HTML using advanced table extraction
+     * Convert PDF to editable HTML using Universal converter ONLY
      */
     private function convertPdfToEditableHtml(Request $request, $pdfPath, Document $document)
     {
         try {
-            // Use the PdfToHtmlService with base64 converter for self-contained HTML
-            $pdfToHtmlService = new \App\Services\PdfToHtmlService();
+            // ONLY USE Universal converter - NO FALLBACKS
+            $universalConverter = new \App\Services\UniversalPDFConverter();
+            $html = $universalConverter->convertToHTML($pdfPath);
             
-            // Use the base64 converter for self-contained HTML with individual elements
-            $html = $pdfToHtmlService->convertPdfToSelfContainedHtml($pdfPath);
+            if (empty($html)) {
+                throw new \Exception('Universal converter returned empty HTML');
+            }
             
-            // Build advanced editable HTML interface
-            $html = $this->buildAdvancedEditableHtml([
-                'full_html' => $html,
-                'tables' => [],
-                'text' => '',
-                'images' => [],
-                'styles' => '',
-                'fonts' => [],
-            ], $pdfPath, $document);
-
+            // Debug logging
+            $pageCount = substr_count($html, 'data-page="');
+            $textElements = substr_count($html, 'class="pdf-text"');
+            $editableElements = substr_count($html, 'contenteditable');
+            
+            Log::info('Successfully converted PDF with Universal converter', [
+                'document_id' => $document->id,
+                'html_size' => strlen($html),
+                'pages' => $pageCount,
+                'text_elements' => $textElements,
+                'editable_elements' => $editableElements,
+                'has_page_1' => strpos($html, 'data-page="1"') !== false,
+                'has_page_2' => strpos($html, 'data-page="2"') !== false
+            ]);
+            
             return $html;
 
         } catch (\Exception $e) {
-            Log::error('PDF to editable HTML conversion failed: ' . $e->getMessage());
-
-            // Return error message instead of fallback
-            throw new \Exception('La conversion PDF a échoué. Veuillez vérifier le fichier PDF.');
+            Log::error('PDF to HTML conversion failed with Universal converter: ' . $e->getMessage());
+            
+            // Return detailed error HTML
+            return '
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erreur de conversion</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .error-container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+        h2 {
+            color: #e53e3e;
+            margin: 0 0 20px 0;
+            font-size: 24px;
+        }
+        .error-message {
+            background: #fff5f5;
+            border-left: 4px solid #e53e3e;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .error-message code {
+            color: #c53030;
+            font-size: 14px;
+            word-break: break-all;
+        }
+        .suggestions {
+            color: #666;
+            line-height: 1.6;
+            margin-top: 20px;
+        }
+        .suggestions ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .btn-retry {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: background 0.3s;
+        }
+        .btn-retry:hover {
+            background: #5a67d8;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h2>⚠️ Erreur de conversion PDF</h2>
+        <p>Impossible de convertir le document PDF en HTML éditable.</p>
+        <div class="error-message">
+            <code>' . htmlspecialchars($e->getMessage()) . '</code>
+        </div>
+        <div class="suggestions">
+            <strong>Suggestions :</strong>
+            <ul>
+                <li>Vérifiez que le fichier PDF n\'est pas corrompu</li>
+                <li>Assurez-vous que le PDF n\'est pas protégé par mot de passe</li>
+                <li>Essayez avec un fichier PDF différent</li>
+                <li>Contactez le support si le problème persiste</li>
+            </ul>
+        </div>
+        <a href="javascript:history.back()" class="btn-retry">← Retour</a>
+    </div>
+</body>
+</html>';
         }
     }
 
@@ -3800,25 +3912,39 @@ class DocumentController extends Controller
                 },
                 body: JSON.stringify({ html: htmlToSend })
             })
-            .then(response => {
+            .then(async response => {
                 hideLoading();
                 if (response.redirected) {
                     window.location.href = response.url;
+                } else if (!response.ok) {
+                    // Si erreur, afficher la vue d\'erreur dans une modal
+                    const errorHtml = await response.text();
+                    showErrorModal(errorHtml);
                 } else {
-                    response.json().then(data => {
+                    try {
+                        const data = await response.json();
                         if (data.success) {
                             updateStatus("Document sauvegardé avec succès");
+                            showSuccessNotification("Le PDF a été généré avec succès!");
                         } else {
-                            alert("Erreur lors de la sauvegarde: " + data.error);
+                            showErrorNotification("Erreur: " + (data.error || "Erreur inconnue"));
                             updateStatus("Erreur: " + data.error);
                         }
-                    });
+                    } catch (e) {
+                        // Si ce n\'est pas du JSON, c\'est probablement une redirection ou du HTML
+                        const text = await response.text();
+                        if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+                            showErrorModal(text);
+                        } else {
+                            showErrorNotification("Réponse inattendue du serveur");
+                        }
+                    }
                 }
             })
             .catch(error => {
                 hideLoading();
-                alert("Erreur de communication: " + error.message);
-                updateStatus("Error: " + error.message);
+                showErrorNotification("Erreur de connexion: " + error.message);
+                updateStatus("Erreur de connexion");
             });
         }
         
@@ -3837,6 +3963,143 @@ class DocumentController extends Controller
         
         function hideLoading() {
             document.getElementById("loadingOverlay").classList.remove("active");
+        }
+        
+        // Notification functions
+        function showSuccessNotification(message) {
+            const notification = createNotification(message, "success");
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 5000);
+        }
+        
+        function showErrorNotification(message) {
+            const notification = createNotification(message, "error");
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 8000);
+        }
+        
+        function createNotification(message, type) {
+            const notification = document.createElement("div");
+            notification.className = `notification notification-${type}`;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                max-width: 400px;
+                padding: 16px 20px;
+                background: ${type === "success" ? "#10b981" : "#ef4444"};
+                color: white;
+                border-radius: 8px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                z-index: 10000;
+                animation: slideIn 0.3s ease-out;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            `;
+            notification.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                        ${type === "success" 
+                            ? \'<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>\' 
+                            : \'<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>\'
+                        }
+                    </svg>
+                    <div style="flex: 1;">${message}</div>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: white; cursor: pointer; padding: 4px;">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            return notification;
+        }
+        
+        // Error modal function
+        function showErrorModal(htmlContent) {
+            // Create modal container
+            const modal = document.createElement("div");
+            modal.id = "errorModal";
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+                animation: fadeIn 0.3s ease-out;
+            `;
+            
+            // Create modal content
+            const modalContent = document.createElement("div");
+            modalContent.style.cssText = `
+                background: white;
+                border-radius: 16px;
+                max-width: 90%;
+                max-height: 90%;
+                overflow: auto;
+                position: relative;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            `;
+            
+            // Add close button
+            const closeButton = document.createElement("button");
+            closeButton.style.cssText = `
+                position: absolute;
+                top: 16px;
+                right: 16px;
+                background: #f3f4f6;
+                border: none;
+                border-radius: 50%;
+                width: 32px;
+                height: 32px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10;
+            `;
+            closeButton.innerHTML = \'<svg width="20" height="20" fill="#6b7280" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>\';
+            closeButton.onclick = () => modal.remove();
+            
+            // Create iframe for error content
+            const iframe = document.createElement("iframe");
+            iframe.style.cssText = `
+                width: 100%;
+                min-height: 500px;
+                border: none;
+                border-radius: 16px;
+            `;
+            iframe.srcdoc = htmlContent;
+            
+            modalContent.appendChild(closeButton);
+            modalContent.appendChild(iframe);
+            modal.appendChild(modalContent);
+            document.body.appendChild(modal);
+            
+            // Close on backdrop click
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            };
+            
+            // Add CSS animation
+            const style = document.createElement("style");
+            style.textContent = `
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes slideIn {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
         }
         
         // Auto-save
@@ -4146,9 +4409,25 @@ class DocumentController extends Controller
                 ->with('success', 'Document sauvegardé avec succès.');
 
         } catch (Exception $e) {
-            Log::error('HTML to PDF save failed', ['document_id' => $document->id, 'error' => $e->getMessage()]);
+            Log::error('HTML to PDF save failed', [
+                'document_id' => $document->id, 
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
-            return response()->json(['success' => false, 'error' => 'Erreur: ' . $e->getMessage()], 500);
+            // Pour les requêtes AJAX, retourner une vue HTML d'erreur au lieu de JSON
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->view('errors.pdf-conversion', [
+                    'error' => $e->getMessage(),
+                    'document' => $document,
+                    'supportEmail' => config('mail.support_email', 'support@gigapdf.com')
+                ], 500);
+            }
+
+            // Pour les requêtes normales, rediriger avec message d'erreur
+            return redirect()->back()
+                ->with('error', 'Impossible de convertir le document en PDF. ' . $e->getMessage())
+                ->withInput();
         }
     }
 
@@ -4537,7 +4816,7 @@ HTML;
         $command = sprintf(
             'wkhtmltopdf ' .
             '--page-width %dmm --page-height %dmm ' .
-            '--margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 0 ' .
+            '--margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 6.6mm ' .
             '--disable-smart-shrinking ' .
             '--print-media-type ' .
             '--enable-local-file-access ' .
@@ -4704,7 +4983,29 @@ HTML;
 
             $xpath = new \DOMXPath($dom);
 
-            // First priority: Find the pdfContent div directly
+            // Priority 1: Find all pdf-page-wrapper elements (multi-page support)
+            $pageWrappers = $xpath->query("//div[contains(@class, 'pdf-page-wrapper')]");
+            if ($pageWrappers->length > 0) {
+                $content = '';
+                foreach ($pageWrappers as $wrapper) {
+                    $content .= $dom->saveHTML($wrapper);
+                }
+                Log::info('Extracted multiple page wrappers', ['count' => $pageWrappers->length]);
+                return $this->fixEmptyImageSources($content);
+            }
+
+            // Priority 2: Find all pdf-page elements
+            $pdfPages = $xpath->query("//div[contains(@class, 'pdf-page')]");
+            if ($pdfPages->length > 0) {
+                $content = '';
+                foreach ($pdfPages as $page) {
+                    $content .= $dom->saveHTML($page);
+                }
+                Log::info('Extracted multiple PDF pages', ['count' => $pdfPages->length]);
+                return $this->fixEmptyImageSources($content);
+            }
+
+            // Priority 3: Find the pdfContent div directly
             $pdfContent = $xpath->query("//div[@id='pdfContent']");
             if ($pdfContent->length > 0) {
                 // Get inner HTML of pdfContent, preserving all attributes
@@ -4721,7 +5022,7 @@ HTML;
                 return $content;
             }
 
-            // Second priority: Find all page containers
+            // Priority 4: Find all page containers
             $pageContainers = $xpath->query("//div[contains(@class, 'pdf-page-container')]");
             if ($pageContainers->length > 0) {
                 $content = '';
@@ -5115,6 +5416,30 @@ HTML;
             position: relative;
         }
         
+        /* Remove page markers from export */
+        .page-marker {
+            display: none !important;
+        }
+        
+        /* Page break handling for multiple pages */
+        .pdf-page-wrapper,
+        .pdf-page {
+            page-break-after: always;
+            page-break-inside: avoid;
+            position: relative;
+            width: {$contentWidthPx}px;
+            height: {$contentHeightPx}px;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        /* Last page should not have page break */
+        .pdf-page-wrapper:last-child,
+        .pdf-page:last-child {
+            page-break-after: auto;
+        }
+        
         /* Page containers - use actual content dimensions and remove ALL margins */
         .pdf-page-container {
             position: absolute !important;
@@ -5256,6 +5581,13 @@ HTML;
 </head>
 <body>
 {$content}
+
+<script>
+    // Signal to wkhtmltopdf that the page is ready
+    if (typeof window !== 'undefined') {
+        window.status = 'ready';
+    }
+</script>
 </body>
 </html>
 HTML;
@@ -5266,8 +5598,30 @@ HTML;
      */
     private function analyzeContentBounds($html)
     {
-        $maxWidth = 794; // Default A4 width in pixels at 96 DPI
-        $maxHeight = 1123; // Default A4 height in pixels at 96 DPI
+        // Default A4 dimensions in pixels at 96 DPI
+        $defaultWidth = 794; // A4 width 
+        $defaultHeight = 1123; // A4 height
+        
+        // Check if this is a multi-page document
+        $pageWrapperCount = substr_count($html, 'class="pdf-page-wrapper"');
+        $pdfPageCount = substr_count($html, 'class="pdf-page"');
+        $totalPages = max($pageWrapperCount, $pdfPageCount);
+        
+        // For multi-page documents, always use standard page dimensions
+        if ($totalPages > 1) {
+            Log::info('Multi-page document detected, using standard dimensions', [
+                'pages' => $totalPages,
+                'width' => $defaultWidth,
+                'height' => $defaultHeight
+            ]);
+            return [
+                'width' => $defaultWidth,
+                'height' => $defaultHeight,
+            ];
+        }
+
+        $maxWidth = $defaultWidth;
+        $maxHeight = $defaultHeight;
 
         // Try to find page container dimensions first
         if (preg_match('/<div[^>]*class=["\'][^"\']*pdf-page-container[^"\']*["\'][^>]*style=["\']([^"\']+)["\']/', $html, $match)) {
@@ -5295,52 +5649,53 @@ HTML;
             }
         }
 
-        // Check for absolutely positioned elements to find actual content bounds
-        $actualMaxX = 0;
-        $actualMaxY = 0;
-        $hasAbsoluteElements = false;
+        // For single page, check for absolutely positioned elements to find actual content bounds
+        if ($totalPages <= 1) {
+            $actualMaxX = 0;
+            $actualMaxY = 0;
+            $hasAbsoluteElements = false;
 
-        if (preg_match_all('/style=["\']([^"\']*)["\']/', $html, $matches)) {
-            foreach ($matches[1] as $style) {
-                // Only process styles with absolute positioning
-                if (strpos($style, 'position: absolute') === false &&
-                    strpos($style, 'position:absolute') === false) {
-                    continue;
-                }
+            if (preg_match_all('/style=["\']([^"\']*)["\']/', $html, $matches)) {
+                foreach ($matches[1] as $style) {
+                    // Only process styles with absolute positioning
+                    if (strpos($style, 'position: absolute') === false &&
+                        strpos($style, 'position:absolute') === false) {
+                        continue;
+                    }
 
-                $hasAbsoluteElements = true;
-                $left = 0;
-                $top = 0;
-                $width = 0;
-                $height = 0;
+                    $hasAbsoluteElements = true;
+                    $left = 0;
+                    $top = 0;
+                    $width = 0;
+                    $height = 0;
 
-                if (preg_match('/left:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
-                    $left = floatval($m[1]);
-                }
-                if (preg_match('/top:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
-                    $top = floatval($m[1]);
-                }
-                if (preg_match('/width:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
-                    $width = floatval($m[1]);
-                }
-                if (preg_match('/height:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
-                    $height = floatval($m[1]);
-                }
+                    if (preg_match('/left:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                        $left = floatval($m[1]);
+                    }
+                    if (preg_match('/top:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                        $top = floatval($m[1]);
+                    }
+                    if (preg_match('/width:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                        $width = floatval($m[1]);
+                    }
+                    if (preg_match('/height:\s*(\d+(?:\.\d+)?)px/', $style, $m)) {
+                        $height = floatval($m[1]);
+                    }
 
-                // Track the furthest extent of content
-                if ($width > 0 || $height > 0) {
-                    $actualMaxX = max($actualMaxX, $left + $width);
-                    $actualMaxY = max($actualMaxY, $top + $height);
+                    // Track the furthest extent of content
+                    if ($width > 0 || $height > 0) {
+                        $actualMaxX = max($actualMaxX, $left + $width);
+                        $actualMaxY = max($actualMaxY, $top + $height);
+                    }
                 }
             }
-        }
 
-        // If we found absolute positioned elements, use their bounds
-        if ($hasAbsoluteElements && $actualMaxX > 0 && $actualMaxY > 0) {
-            // Use actual content bounds WITHOUT any margin to eliminate shadows
-            // No extra pixels = no shadows
-            $maxWidth = $actualMaxX;
-            $maxHeight = $actualMaxY;
+            // If we found absolute positioned elements, use their bounds
+            if ($hasAbsoluteElements && $actualMaxX > 0 && $actualMaxY > 0) {
+                // Use actual content bounds or default, whichever is more appropriate
+                $maxWidth = min(max($actualMaxX, $defaultWidth), 1190);
+                $maxHeight = min(max($actualMaxY, $defaultHeight), 1684);
+            }
         }
 
         // Cap dimensions to reasonable maximum (A3 size)
@@ -5363,15 +5718,15 @@ HTML;
         $width = $dimensions['width'];
         $height = $dimensions['height'];
 
-        // Calculate pixel dimensions for viewport
+        // Calculate pixel dimensions for viewport - no scaling
         $widthPx = round($width * 96 / 25.4);
         $heightPx = round($height * 96 / 25.4);
 
-        // wkhtmltopdf command optimized for exact positioning without ANY margins
+        // wkhtmltopdf command optimized for multiple pages without zoom or offset
         $command = sprintf(
             'wkhtmltopdf ' .
             '--page-width %dmm --page-height %dmm ' .
-            '--margin-top 0mm --margin-bottom 0mm --margin-left 0mm --margin-right 0mm ' .
+            '--margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 6.6mm ' .
             '--disable-smart-shrinking ' .
             '--print-media-type ' .
             '--enable-local-file-access ' .
@@ -5381,21 +5736,18 @@ HTML;
             '--dpi 96 ' . // Screen DPI for 1:1 mapping
             '--image-quality 100 ' .
             '--image-dpi 96 ' .
-            '--javascript-delay 1000 ' . // 1 second delay for images to load
+            '--javascript-delay 500 ' . // Reduced delay
             '--no-stop-slow-scripts ' .
             '--enable-javascript ' .
-            '--viewport-size %dx%d ' . // Exact viewport size
+            '--window-status ready ' . // Wait for window.status = "ready"
             '--no-outline ' . // Disable outline/border
-            '--background ' . // Enable HTML background to show vector images
+            '--background ' . // Enable HTML background
             '--enable-forms ' . // Enable form elements
-            '--zoom 1 ' . // Ensure no zoom
+            '--zoom 1.0 ' . // Explicit 1:1 zoom
             '--disable-external-links ' . // No external resources
-            '--no-pdf-compression ' . // Keep vector data
             '%s %s 2>&1',
             $width,
             $height,
-            $widthPx,
-            $heightPx,
             escapeshellarg($htmlFile),
             escapeshellarg($pdfFile)
         );

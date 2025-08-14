@@ -451,7 +451,7 @@ class HTMLPDFEditor
     }
 
     /**
-     * Convert HTML back to PDF
+     * Convert HTML back to PDF with compression if needed
      */
     private function convertHTMLToPDF($html)
     {
@@ -463,13 +463,19 @@ class HTMLPDFEditor
         if ($this->commandExists('wkhtmltopdf')) {
             $pdfPath = $this->convertWithWkhtmltopdf($htmlFile);
             unlink($htmlFile);
-
+            
+            // Check if compression is needed (max 25MB)
+            $pdfPath = $this->compressPdfIfNeeded($pdfPath);
+            
             return $pdfPath;
         }
 
         // Method 2: Use TCPDF
         $pdfPath = $this->convertWithTCPDF($html);
         unlink($htmlFile);
+        
+        // Check if compression is needed (max 25MB)
+        $pdfPath = $this->compressPdfIfNeeded($pdfPath);
 
         return $pdfPath;
     }
@@ -481,17 +487,20 @@ class HTMLPDFEditor
     {
         $pdfFile = tempnam(sys_get_temp_dir(), 'output_') . '.pdf';
 
-        // Enhanced wkhtmltopdf options for perfect layout preservation
+        // Enhanced wkhtmltopdf options for perfect layout preservation without zoom
         $command = sprintf(
             'wkhtmltopdf --enable-local-file-access --no-stop-slow-scripts ' .
-            '--page-size A4 --dpi 300 --print-media-type ' .
-            '--margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 0 ' .
+            '--page-size A4 --dpi 96 --print-media-type ' .
+            '--margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 6.6mm ' .
             '--disable-smart-shrinking --zoom 1.0 ' .
-            '--javascript-delay 1000 ' .
+            '--javascript-delay 500 ' .
+            '--window-status ready ' .
             '--enable-forms ' .
             '--encoding UTF-8 ' .
             '--load-error-handling ignore ' .
             '--load-media-error-handling ignore ' .
+            '--no-outline ' .
+            '--background ' .
             '%s %s 2>&1',
             escapeshellarg($htmlFile),
             escapeshellarg($pdfFile)
@@ -542,5 +551,191 @@ class HTMLPDFEditor
         $result = shell_exec("which {$command} 2>/dev/null");
 
         return ! empty($result);
+    }
+    
+    /**
+     * Compress PDF if it exceeds 50MB
+     */
+    private function compressPdfIfNeeded($pdfPath, $maxSize = 52428800)
+    {
+        $currentSize = filesize($pdfPath);
+        
+        // If file is under limit, no compression needed
+        if ($currentSize <= $maxSize) {
+            return $pdfPath;
+        }
+        
+        // Log compression need
+        error_log("PDF exceeds 50MB (" . round($currentSize / 1024 / 1024, 2) . "MB), compressing...");
+        
+        // Try compression
+        $compressedPath = $this->compressPdfAdaptive($pdfPath, $maxSize);
+        
+        return $compressedPath;
+    }
+    
+    /**
+     * Compress PDF adaptively to stay under the specified size limit
+     */
+    private function compressPdfAdaptive($pdfPath, $maxSize = 26214400)
+    {
+        $originalSize = filesize($pdfPath);
+        $compressedPath = tempnam(sys_get_temp_dir(), 'compressed_') . '.pdf';
+        
+        // Calculate compression ratio needed
+        $compressionRatio = $maxSize / $originalSize;
+        
+        // Select appropriate compression level
+        if ($compressionRatio < 0.3) {
+            $preset = 'screen';
+        } elseif ($compressionRatio < 0.5) {
+            $preset = 'ebook';
+        } elseif ($compressionRatio < 0.7) {
+            $preset = 'printer';
+        } else {
+            $preset = 'prepress';
+        }
+        
+        // Try Ghostscript compression
+        if ($this->compressWithGhostscript($pdfPath, $compressedPath, $preset)) {
+            if (filesize($compressedPath) <= $maxSize) {
+                error_log("PDF compressed successfully from " . 
+                    round($originalSize / 1024 / 1024, 2) . "MB to " . 
+                    round(filesize($compressedPath) / 1024 / 1024, 2) . "MB");
+                
+                // Replace original with compressed
+                unlink($pdfPath);
+                return $compressedPath;
+            }
+        }
+        
+        // If still too large, try more aggressive compression
+        if (filesize($compressedPath) > $maxSize || !file_exists($compressedPath)) {
+            if ($this->compressWithGhostscript($pdfPath, $compressedPath, 'screen', true)) {
+                if (filesize($compressedPath) <= $maxSize) {
+                    error_log("PDF compressed with aggressive settings from " . 
+                        round($originalSize / 1024 / 1024, 2) . "MB to " . 
+                        round(filesize($compressedPath) / 1024 / 1024, 2) . "MB");
+                    
+                    unlink($pdfPath);
+                    return $compressedPath;
+                }
+            }
+        }
+        
+        // If still too large, try PS conversion
+        if (filesize($compressedPath) > $maxSize || !file_exists($compressedPath)) {
+            if ($this->compressViaPostscript($pdfPath, $compressedPath)) {
+                if (filesize($compressedPath) <= $maxSize) {
+                    error_log("PDF compressed via PS from " . 
+                        round($originalSize / 1024 / 1024, 2) . "MB to " . 
+                        round(filesize($compressedPath) / 1024 / 1024, 2) . "MB");
+                    
+                    unlink($pdfPath);
+                    return $compressedPath;
+                }
+            }
+        }
+        
+        // Clean up temp file if compression failed
+        if (file_exists($compressedPath)) {
+            unlink($compressedPath);
+        }
+        
+        error_log("Warning: Could not compress PDF below 25MB. Final size: " . 
+            round(filesize($pdfPath) / 1024 / 1024, 2) . "MB");
+        
+        return $pdfPath;
+    }
+    
+    /**
+     * Compress PDF using Ghostscript
+     */
+    private function compressWithGhostscript($inputPath, $outputPath, $preset, $aggressive = false)
+    {
+        // Check if Ghostscript is available
+        if (!$this->commandExists('gs')) {
+            return false;
+        }
+        
+        $dpi = 150;
+        if ($aggressive) {
+            $dpi = 72;
+        } elseif ($preset === 'screen') {
+            $dpi = 72;
+        } elseif ($preset === 'ebook') {
+            $dpi = 150;
+        } elseif ($preset === 'printer') {
+            $dpi = 200;
+        } elseif ($preset === 'prepress') {
+            $dpi = 300;
+        }
+        
+        // Build Ghostscript command
+        $command = sprintf(
+            'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH ' .
+            '-dPDFSETTINGS=/%s -dColorImageResolution=%d -dGrayImageResolution=%d ' .
+            '-dMonoImageResolution=%d -dDownsampleColorImages=true ' .
+            '-dDownsampleGrayImages=true -dDownsampleMonoImages=true ' .
+            '-dColorImageDownsampleType=/Bicubic -dGrayImageDownsampleType=/Bicubic ' .
+            '-dMonoImageDownsampleType=/Bicubic -dOptimize=true ' .
+            '-dEmbedAllFonts=false -dSubsetFonts=true -dCompressFonts=true ' .
+            '-dDetectDuplicateImages=true -dAutoRotatePages=/None ' .
+            '-sOutputFile=%s %s 2>&1',
+            $preset,
+            $dpi,
+            $dpi,
+            $dpi,
+            escapeshellarg($outputPath),
+            escapeshellarg($inputPath)
+        );
+        
+        exec($command, $output, $returnCode);
+        
+        return $returnCode === 0 && file_exists($outputPath) && filesize($outputPath) > 0;
+    }
+    
+    /**
+     * Compress PDF by converting to PostScript and back
+     */
+    private function compressViaPostscript($inputPath, $outputPath)
+    {
+        // Check if required commands are available
+        if (!$this->commandExists('pdf2ps') || !$this->commandExists('ps2pdf')) {
+            return false;
+        }
+        
+        $psPath = tempnam(sys_get_temp_dir(), 'temp_') . '.ps';
+        
+        // Convert PDF to PS
+        $pdf2psCommand = sprintf(
+            'pdf2ps %s %s 2>&1',
+            escapeshellarg($inputPath),
+            escapeshellarg($psPath)
+        );
+        
+        exec($pdf2psCommand, $output, $returnCode);
+        
+        if ($returnCode !== 0 || !file_exists($psPath)) {
+            return false;
+        }
+        
+        // Convert PS back to PDF with compression
+        $ps2pdfCommand = sprintf(
+            'ps2pdf -dPDFSETTINGS=/screen -dDownsampleColorImages=true ' .
+            '-dColorImageResolution=72 -dColorImageDownsampleType=/Bicubic ' .
+            '-dEmbedAllFonts=false -dCompressFonts=true %s %s 2>&1',
+            escapeshellarg($psPath),
+            escapeshellarg($outputPath)
+        );
+        
+        exec($ps2pdfCommand, $output, $returnCode);
+        
+        // Clean up PS file
+        if (file_exists($psPath)) {
+            unlink($psPath);
+        }
+        
+        return $returnCode === 0 && file_exists($outputPath) && filesize($outputPath) > 0;
     }
 }

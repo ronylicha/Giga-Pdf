@@ -42,6 +42,21 @@ class ConversionService
                 throw new ConversionFailedException("La conversion a échoué - fichier de sortie vide ou inexistant");
             }
 
+            // Si c'est une conversion vers PDF et que le fichier dépasse 50MB, compresser
+            if ($toFormat === 'pdf') {
+                $maxSize = 50 * 1024 * 1024; // 50MB en bytes
+                $currentSize = filesize($outputPath);
+                
+                if ($currentSize > $maxSize) {
+                    Log::info('PDF exceeds 50MB, compressing...', [
+                        'original_size' => $currentSize,
+                        'max_size' => $maxSize
+                    ]);
+                    
+                    $outputPath = $this->compressPdfAdaptive($outputPath, $maxSize);
+                }
+            }
+
             Log::info('Conversion successful', [
                 'output' => $outputPath,
                 'size' => filesize($outputPath),
@@ -849,5 +864,201 @@ PYTHON;
 
         // Remove the input format from output formats
         return array_values(array_diff($formats, [$inputFormat]));
+    }
+
+    /**
+     * Compress PDF adaptively to stay under the specified size limit
+     * 
+     * @param string $pdfPath Path to the PDF file to compress
+     * @param int $maxSize Maximum size in bytes (default 25MB)
+     * @return string Path to the compressed PDF
+     */
+    protected function compressPdfAdaptive(string $pdfPath, int $maxSize = 26214400): string
+    {
+        $originalSize = filesize($pdfPath);
+        $compressedPath = sys_get_temp_dir() . '/' . uniqid('compressed_') . '.pdf';
+        
+        // Start with moderate compression settings
+        $compressionLevels = [
+            'screen' => ['dpi' => 72, 'quality' => 60],    // Lowest quality, smallest size
+            'ebook' => ['dpi' => 150, 'quality' => 75],    // Medium quality
+            'printer' => ['dpi' => 200, 'quality' => 85],  // Good quality
+            'prepress' => ['dpi' => 300, 'quality' => 95], // High quality
+        ];
+        
+        // Calculate compression ratio needed
+        $compressionRatio = $maxSize / $originalSize;
+        
+        // Select appropriate compression level based on ratio
+        if ($compressionRatio < 0.3) {
+            $preset = 'screen';
+        } elseif ($compressionRatio < 0.5) {
+            $preset = 'ebook';
+        } elseif ($compressionRatio < 0.7) {
+            $preset = 'printer';
+        } else {
+            $preset = 'prepress';
+        }
+        
+        Log::info('Compressing PDF', [
+            'original_size' => $originalSize,
+            'target_size' => $maxSize,
+            'compression_ratio' => $compressionRatio,
+            'preset' => $preset
+        ]);
+        
+        // Try Ghostscript compression first
+        $gsCompressed = $this->compressWithGhostscript($pdfPath, $compressedPath, $preset, $compressionLevels[$preset]);
+        
+        if ($gsCompressed && filesize($compressedPath) <= $maxSize) {
+            Log::info('PDF compressed successfully with Ghostscript', [
+                'new_size' => filesize($compressedPath),
+                'reduction' => round((1 - filesize($compressedPath) / $originalSize) * 100, 2) . '%'
+            ]);
+            
+            // Replace original with compressed
+            copy($compressedPath, $pdfPath);
+            unlink($compressedPath);
+            return $pdfPath;
+        }
+        
+        // If Ghostscript fails or file still too large, try more aggressive compression
+        if (!$gsCompressed || filesize($compressedPath) > $maxSize) {
+            Log::info('Trying more aggressive compression...');
+            
+            // Try with lower DPI and quality
+            $aggressiveSettings = [
+                'dpi' => 72,
+                'quality' => 50,
+                'downsample_images' => true,
+                'remove_duplicates' => true
+            ];
+            
+            $aggressiveCompressed = $this->compressWithGhostscript(
+                $pdfPath, 
+                $compressedPath, 
+                'custom', 
+                $aggressiveSettings
+            );
+            
+            if ($aggressiveCompressed && filesize($compressedPath) <= $maxSize) {
+                Log::info('PDF compressed with aggressive settings', [
+                    'new_size' => filesize($compressedPath),
+                    'reduction' => round((1 - filesize($compressedPath) / $originalSize) * 100, 2) . '%'
+                ]);
+                
+                copy($compressedPath, $pdfPath);
+                unlink($compressedPath);
+                return $pdfPath;
+            }
+        }
+        
+        // If still too large, try converting to PS and back (last resort)
+        if (filesize($compressedPath) > $maxSize || !file_exists($compressedPath)) {
+            Log::info('Using PS conversion as last resort...');
+            $this->compressViaPostscript($pdfPath, $compressedPath, $maxSize);
+            
+            if (file_exists($compressedPath) && filesize($compressedPath) <= $maxSize) {
+                copy($compressedPath, $pdfPath);
+                unlink($compressedPath);
+                return $pdfPath;
+            }
+        }
+        
+        // Clean up temp file
+        if (file_exists($compressedPath)) {
+            unlink($compressedPath);
+        }
+        
+        Log::warning('Could not compress PDF below target size', [
+            'original_size' => $originalSize,
+            'target_size' => $maxSize,
+            'final_size' => filesize($pdfPath)
+        ]);
+        
+        return $pdfPath;
+    }
+    
+    /**
+     * Compress PDF using Ghostscript
+     */
+    protected function compressWithGhostscript(string $inputPath, string $outputPath, string $preset, array $settings): bool
+    {
+        // Build Ghostscript command
+        $command = sprintf(
+            'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH ' .
+            '-dPDFSETTINGS=/%s -dColorImageResolution=%d -dGrayImageResolution=%d ' .
+            '-dMonoImageResolution=%d -dDownsampleColorImages=true ' .
+            '-dDownsampleGrayImages=true -dDownsampleMonoImages=true ' .
+            '-dColorImageDownsampleType=/Bicubic -dGrayImageDownsampleType=/Bicubic ' .
+            '-dMonoImageDownsampleType=/Bicubic -dOptimize=true ' .
+            '-dEmbedAllFonts=false -dSubsetFonts=true -dCompressFonts=true ' .
+            '-dDetectDuplicateImages=true -dAutoRotatePages=/None ' .
+            '-sOutputFile=%s %s 2>&1',
+            $preset === 'custom' ? 'screen' : $preset,
+            $settings['dpi'] ?? 150,
+            $settings['dpi'] ?? 150,
+            $settings['dpi'] ?? 150,
+            escapeshellarg($outputPath),
+            escapeshellarg($inputPath)
+        );
+        
+        exec($command, $output, $returnCode);
+        
+        if ($returnCode !== 0) {
+            Log::error('Ghostscript compression failed', [
+                'command' => $command,
+                'output' => implode("\n", $output),
+                'return_code' => $returnCode
+            ]);
+            return false;
+        }
+        
+        return file_exists($outputPath) && filesize($outputPath) > 0;
+    }
+    
+    /**
+     * Compress PDF by converting to PostScript and back
+     */
+    protected function compressViaPostscript(string $inputPath, string $outputPath, int $maxSize): bool
+    {
+        $psPath = sys_get_temp_dir() . '/' . uniqid('temp_') . '.ps';
+        
+        // Convert PDF to PS
+        $pdf2psCommand = sprintf(
+            'pdf2ps %s %s 2>&1',
+            escapeshellarg($inputPath),
+            escapeshellarg($psPath)
+        );
+        
+        exec($pdf2psCommand, $output, $returnCode);
+        
+        if ($returnCode !== 0 || !file_exists($psPath)) {
+            Log::error('PDF to PS conversion failed', ['output' => implode("\n", $output)]);
+            return false;
+        }
+        
+        // Convert PS back to PDF with compression
+        $ps2pdfCommand = sprintf(
+            'ps2pdf -dPDFSETTINGS=/screen -dDownsampleColorImages=true ' .
+            '-dColorImageResolution=72 -dColorImageDownsampleType=/Bicubic ' .
+            '-dEmbedAllFonts=false -dCompressFonts=true %s %s 2>&1',
+            escapeshellarg($psPath),
+            escapeshellarg($outputPath)
+        );
+        
+        exec($ps2pdfCommand, $output, $returnCode);
+        
+        // Clean up PS file
+        if (file_exists($psPath)) {
+            unlink($psPath);
+        }
+        
+        if ($returnCode !== 0) {
+            Log::error('PS to PDF conversion failed', ['output' => implode("\n", $output)]);
+            return false;
+        }
+        
+        return file_exists($outputPath) && filesize($outputPath) > 0;
     }
 }

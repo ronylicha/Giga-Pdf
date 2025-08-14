@@ -167,10 +167,15 @@ class InstallGigaPdf extends Command
             'tesseract' => ['command' => 'tesseract --version', 'required' => false],
             'pdftotext' => ['command' => 'pdftotext -v', 'required' => false],
             'pdftohtml' => ['command' => 'pdftohtml -v', 'required' => false],
+            'pdftocairo' => ['command' => 'pdftocairo -v 2>&1', 'required' => false, 'recommended' => true],  // High-quality PDF to image conversion
+            'pdf2svg' => ['command' => 'pdf2svg 2>&1 | head -1', 'required' => false],  // Vector graphics extraction
+            'gm' => ['command' => 'gm version', 'required' => false, 'name' => 'GraphicsMagick'],  // Better image processing
             'wkhtmltopdf' => ['command' => 'wkhtmltopdf --version', 'required' => false],
             'convert' => ['command' => 'convert --version', 'required' => false, 'name' => 'ImageMagick'],
             'pdftoppm' => ['command' => 'pdftoppm -v', 'required' => false],
             'ghostscript' => ['command' => 'gs --version', 'required' => false, 'recommended' => true],  // Recommended for password removal
+            'inkscape' => ['command' => 'inkscape --version 2>&1', 'required' => false],  // SVG processing
+            'rsvg-convert' => ['command' => 'rsvg-convert --version', 'required' => false],  // SVG to raster conversion
             'python3' => ['command' => 'python3 --version', 'required' => false],
             'pip3' => ['command' => 'pip3 --version', 'required' => false],
             'libreoffice' => ['command' => 'libreoffice --version', 'required' => false],
@@ -238,8 +243,24 @@ class InstallGigaPdf extends Command
             $this->warn('Some optional dependencies are missing. These are needed for PDF features:');
 
             // Prioritize qpdf and ghostscript for password removal
-            if (in_array('qpdf', $missingOptional) || in_array('ghostscript', $missingOptional)) {
+            if (in_array('qpdf', $missingOptional) || in_array('ghostscript', $missingOptional) || in_array('pdftocairo', $missingOptional)) {
                 $this->installPdfTools();
+            }
+            
+            if (in_array('pdf2svg', $missingOptional)) {
+                $this->installPdf2Svg();
+            }
+            
+            if (in_array('gm', $missingOptional) || in_array('GraphicsMagick', $missingOptional)) {
+                $this->installGraphicsMagick();
+            }
+            
+            if (in_array('inkscape', $missingOptional)) {
+                $this->installInkscape();
+            }
+            
+            if (in_array('rsvg-convert', $missingOptional)) {
+                $this->installLibrsvg();
             }
 
             if (in_array('tesseract', $missingOptional)) {
@@ -513,7 +534,7 @@ class InstallGigaPdf extends Command
                 ],
                 'max_storage_gb' => 1,
                 'max_users' => 5,
-                'max_file_size_mb' => 25,
+                'max_file_size_mb' => 50,
                 'features' => [
                     'ocr' => true,
                     'advanced_editing' => true,
@@ -1146,10 +1167,16 @@ EOT;
                 case 'debian':
                     $commands = [
                         'sudo apt-get update',
-                        'sudo apt-get install -y poppler-utils',
+                        'sudo apt-get install -y poppler-utils',  // Includes pdftocairo
                         'sudo apt-get install -y pdftk',
                         'sudo apt-get install -y qpdf',        // Essential for password removal
                         'sudo apt-get install -y ghostscript',  // Essential for forced password removal
+                        'sudo apt-get install -y pdf2svg',      // Vector graphics extraction
+                        'sudo apt-get install -y graphicsmagick',  // Better image processing
+                        'sudo apt-get install -y inkscape',     // SVG processing
+                        'sudo apt-get install -y librsvg2-bin', // SVG to raster conversion
+                        'sudo apt-get install -y libcairo2-dev',  // Cairo graphics support
+                        'sudo apt-get install -y libpango1.0-dev', // Text rendering
                     ];
 
                     break;
@@ -1158,20 +1185,32 @@ EOT;
                 case 'rhel':
                 case 'fedora':
                     $commands = [
-                        'sudo yum install -y poppler-utils',
+                        'sudo yum install -y poppler-utils',  // Includes pdftocairo
                         'sudo yum install -y pdftk',
                         'sudo yum install -y qpdf',        // Essential for password removal
                         'sudo yum install -y ghostscript',  // Essential for forced password removal
+                        'sudo yum install -y pdf2svg',      // Vector graphics extraction
+                        'sudo yum install -y GraphicsMagick',  // Better image processing
+                        'sudo yum install -y inkscape',     // SVG processing
+                        'sudo yum install -y librsvg2',     // SVG to raster conversion
+                        'sudo yum install -y cairo-devel',  // Cairo graphics support
+                        'sudo yum install -y pango-devel',  // Text rendering
                     ];
 
                     break;
 
                 case 'macos':
                     $commands = [
-                        'brew install poppler',
+                        'brew install poppler',      // Includes pdftocairo
                         'brew install pdftk-java',
                         'brew install qpdf',        // Essential for password removal
                         'brew install ghostscript',  // Essential for forced password removal
+                        'brew install pdf2svg',      // Vector graphics extraction
+                        'brew install graphicsmagick',  // Better image processing
+                        'brew install inkscape',     // SVG processing
+                        'brew install librsvg',      // SVG to raster conversion
+                        'brew install cairo',        // Cairo graphics support
+                        'brew install pango',        // Text rendering
                     ];
 
                     break;
@@ -1181,6 +1220,11 @@ EOT;
                     $this->info('Please install PDF tools manually:');
                     $this->info('  - qpdf: For PDF password removal');
                     $this->info('  - ghostscript: For forced PDF unlocking');
+                    $this->info('  - poppler-utils: For pdftocairo (high-quality PDF rendering)');
+                    $this->info('  - pdf2svg: For vector graphics extraction');
+                    $this->info('  - graphicsmagick: For better image processing');
+                    $this->info('  - inkscape: For SVG processing');
+                    $this->info('  - librsvg2-bin: For SVG to raster conversion');
                     $this->info('  - poppler-utils: For PDF text extraction');
                     $this->info('  - pdftk: For PDF manipulation');
 
@@ -1888,6 +1932,230 @@ PYTHON;
         }
 
         $this->info('  ✓ Cleanup completed');
+    }
+
+    /**
+     * Install pdf2svg for vector graphics extraction
+     */
+    protected function installPdf2Svg(): void
+    {
+        $this->warn('');
+        $this->warn('pdf2svg is required for extracting vector graphics from PDFs.');
+
+        if ($this->confirm('Do you want to install pdf2svg?', true)) {
+            $os = $this->detectOS();
+
+            $this->info('Installing pdf2svg...');
+
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y pdf2svg',
+                    ];
+                    break;
+
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = ['sudo yum install -y pdf2svg'];
+                    break;
+
+                case 'macos':
+                    $commands = ['brew install pdf2svg'];
+                    break;
+
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install pdf2svg manually.');
+                    return;
+            }
+
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+
+                if (! $process->isSuccessful()) {
+                    $this->error('Failed to install pdf2svg. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+
+            $this->info('  ✓ pdf2svg installed successfully');
+        }
+    }
+    
+    /**
+     * Install GraphicsMagick for better image processing
+     */
+    protected function installGraphicsMagick(): void
+    {
+        $this->warn('');
+        $this->warn('GraphicsMagick provides better image processing than ImageMagick.');
+
+        if ($this->confirm('Do you want to install GraphicsMagick?', true)) {
+            $os = $this->detectOS();
+
+            $this->info('Installing GraphicsMagick...');
+
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y graphicsmagick',
+                    ];
+                    break;
+
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = ['sudo yum install -y GraphicsMagick'];
+                    break;
+
+                case 'macos':
+                    $commands = ['brew install graphicsmagick'];
+                    break;
+
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install GraphicsMagick manually.');
+                    return;
+            }
+
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+
+                if (! $process->isSuccessful()) {
+                    $this->error('Failed to install GraphicsMagick. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+
+            $this->info('  ✓ GraphicsMagick installed successfully');
+        }
+    }
+    
+    /**
+     * Install Inkscape for SVG processing
+     */
+    protected function installInkscape(): void
+    {
+        $this->warn('');
+        $this->warn('Inkscape is required for advanced SVG processing.');
+
+        if ($this->confirm('Do you want to install Inkscape?', true)) {
+            $os = $this->detectOS();
+
+            $this->info('Installing Inkscape...');
+
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y inkscape',
+                    ];
+                    break;
+
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = ['sudo yum install -y inkscape'];
+                    break;
+
+                case 'macos':
+                    $commands = ['brew install inkscape'];
+                    break;
+
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install Inkscape manually.');
+                    return;
+            }
+
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+
+                if (! $process->isSuccessful()) {
+                    $this->error('Failed to install Inkscape. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+
+            $this->info('  ✓ Inkscape installed successfully');
+        }
+    }
+    
+    /**
+     * Install librsvg for SVG to raster conversion
+     */
+    protected function installLibrsvg(): void
+    {
+        $this->warn('');
+        $this->warn('librsvg is required for SVG to raster image conversion.');
+
+        if ($this->confirm('Do you want to install librsvg?', true)) {
+            $os = $this->detectOS();
+
+            $this->info('Installing librsvg...');
+
+            $commands = [];
+            switch ($os) {
+                case 'ubuntu':
+                case 'debian':
+                    $commands = [
+                        'sudo apt-get update',
+                        'sudo apt-get install -y librsvg2-bin',
+                    ];
+                    break;
+
+                case 'centos':
+                case 'rhel':
+                case 'fedora':
+                    $commands = ['sudo yum install -y librsvg2'];
+                    break;
+
+                case 'macos':
+                    $commands = ['brew install librsvg'];
+                    break;
+
+                default:
+                    $this->error('Automatic installation not supported for your OS.');
+                    $this->info('Please install librsvg manually.');
+                    return;
+            }
+
+            foreach ($commands as $command) {
+                $this->info("Running: $command");
+                $process = Process::fromShellCommandline($command);
+                $process->setTimeout(300);
+                $process->run();
+
+                if (! $process->isSuccessful()) {
+                    $this->error('Failed to install librsvg. Please install it manually.');
+                    $this->error($process->getErrorOutput());
+                    return;
+                }
+            }
+
+            $this->info('  ✓ librsvg installed successfully');
+        }
     }
 
     /**

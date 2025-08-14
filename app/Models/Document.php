@@ -54,6 +54,11 @@ class Document extends Model
     ];
 
     /**
+     * The accessors to append to the model's array form.
+     */
+    protected $appends = ['thumbnail_url'];
+
+    /**
      * Default attributes
      */
     protected $attributes = [
@@ -253,7 +258,16 @@ class Document extends Model
             return null;
         }
 
-        return Storage::url($this->thumbnail_path);
+        // Return public URL for thumbnail
+        return Storage::disk('public')->url($this->thumbnail_path);
+    }
+
+    /**
+     * Accessor for thumbnail_url attribute
+     */
+    public function getThumbnailUrlAttribute(): ?string
+    {
+        return $this->getThumbnailUrl();
     }
 
     /**

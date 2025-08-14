@@ -83,10 +83,28 @@ const loadHtmlContent = async () => {
         loading.value = true;
         error.value = null;
         
-        const response = await axios.post(route('documents.convert-to-html', props.document.id));
+        // Add timestamp to force fresh request
+        const response = await axios.post(
+            route('documents.convert-to-html', props.document.id),
+            {},
+            {
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                params: {
+                    _t: Date.now() // Force bypass any caching
+                }
+            }
+        );
         
         if (response.data.success) {
             editorHtml.value = response.data.html;
+            console.log('HTML loaded successfully:', {
+                length: response.data.html.length,
+                timestamp: response.data.timestamp,
+                hasContent: response.data.html.includes('contenteditable')
+            });
         } else {
             error.value = response.data.error || 'Erreur lors de la conversion du document';
         }
@@ -137,36 +155,128 @@ const handleSave = async (html) => {
 // Handle export from WYSIWYG editor
 const handleExport = async (html) => {
     try {
-        // Create a form to submit the HTML content
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = route('documents.save-html-as-pdf', props.document.id);
-        form.style.display = 'none';
-        
-        // Add CSRF token
-        const csrfToken = document.createElement('input');
-        csrfToken.type = 'hidden';
-        csrfToken.name = '_token';
-        csrfToken.value = document.querySelector('meta[name="csrf-token"]')?.content || '';
-        form.appendChild(csrfToken);
-        
-        // Add HTML content
-        const htmlInput = document.createElement('input');
-        htmlInput.type = 'hidden';
-        htmlInput.name = 'html';
-        htmlInput.value = html;
-        form.appendChild(htmlInput);
-        
         // Show loading toast
         showToast('Génération du PDF en cours...', 'success');
         
-        // Submit form - will redirect to documents list
-        document.body.appendChild(form);
-        form.submit();
+        // Use fetch to handle errors properly
+        const response = await fetch(route('documents.save-html-as-pdf', props.document.id), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                'Accept': 'text/html,application/json'
+            },
+            body: JSON.stringify({ html })
+        });
+        
+        if (!response.ok) {
+            // Si erreur, afficher la vue d'erreur dans une modal
+            const errorHtml = await response.text();
+            showErrorModal(errorHtml);
+            showToast('Erreur lors de la conversion PDF', 'error');
+        } else {
+            // Success - check if we got a redirect response
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/html')) {
+                // We got a redirect, navigate to documents list
+                window.location.href = route('documents.index');
+            } else {
+                // Parse JSON response
+                try {
+                    const data = await response.json();
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                    } else {
+                        showToast('Document sauvegardé avec succès', 'success');
+                        setTimeout(() => {
+                            window.location.href = route('documents.index');
+                        }, 2000);
+                    }
+                } catch (e) {
+                    // If not JSON, assume success and redirect
+                    window.location.href = route('documents.index');
+                }
+            }
+        }
     } catch (err) {
         console.error('Export error:', err);
-        showToast('Erreur lors de l\'export PDF', 'error');
+        showToast('Erreur lors de l\'export PDF: ' + err.message, 'error');
     }
+};
+
+// Function to show error modal
+const showErrorModal = (htmlContent) => {
+    // Create modal container
+    const modal = document.createElement('div');
+    modal.id = 'errorModal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    `;
+    
+    // Create iframe for error content
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = `
+        width: 90%;
+        max-width: 700px;
+        height: 80%;
+        max-height: 600px;
+        border: none;
+        border-radius: 20px;
+        background: white;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    `;
+    
+    // Add close button
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '×';
+    closeBtn.style.cssText = `
+        position: absolute;
+        top: 10%;
+        right: 5%;
+        width: 40px;
+        height: 40px;
+        background: white;
+        border: none;
+        border-radius: 50%;
+        font-size: 30px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        z-index: 10000;
+    `;
+    
+    closeBtn.onclick = () => {
+        document.body.removeChild(modal);
+    };
+    
+    modal.appendChild(closeBtn);
+    modal.appendChild(iframe);
+    document.body.appendChild(modal);
+    
+    // Write content to iframe
+    iframe.onload = () => {
+        iframe.contentDocument.open();
+        iframe.contentDocument.write(htmlContent);
+        iframe.contentDocument.close();
+    };
+    
+    // Also allow clicking outside to close
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    };
 };
 
 // Show toast notification

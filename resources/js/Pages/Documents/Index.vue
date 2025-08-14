@@ -15,15 +15,15 @@
                         </svg>
                         Nouveau Document
                     </Link>
-                    <button
-                        @click="showConvertModal = true"
+                    <Link
+                        :href="route('conversions.index')"
                         class="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700"
                     >
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                         </svg>
                         Convertir
-                    </button>
+                    </Link>
                 </div>
             </div>
         </template>
@@ -564,7 +564,6 @@ const props = defineProps({
 
 const viewMode = ref('grid');
 const selectedDocuments = ref([]);
-const showConvertModal = ref(false);
 const activeDropdown = ref(null);
 
 // Share modal variables

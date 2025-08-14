@@ -132,7 +132,7 @@ class TenantManagementController extends Controller
             'defaultLimits' => [
                 'max_users' => 5,
                 'max_storage_gb' => 1,
-                'max_file_size_mb' => 25,
+                'max_file_size_mb' => 50,
             ],
         ]);
     }

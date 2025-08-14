@@ -165,9 +165,10 @@ apt-get install -y \
     tesseract-ocr-eng \
     tesseract-ocr-fra \
     tesseract-ocr-deu \
-    tesseract-ocr-spa
+    tesseract-ocr-spa \
+    tesseract-ocr-ita
 
-# PDF manipulation tools
+# PDF manipulation tools - Core
 apt-get install -y \
     poppler-utils \
     ghostscript \
@@ -176,10 +177,52 @@ apt-get install -y \
     qpdf \
     wkhtmltopdf
 
+# PDF manipulation tools - Advanced (for high-fidelity conversion)
+apt-get install -y \
+    pdf2svg \
+    graphicsmagick \
+    inkscape \
+    librsvg2-bin \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libgdk-pixbuf2.0-dev \
+    libffi-dev \
+    shared-mime-info \
+    mupdf-tools \
+    pdfgrep
+
 # Configure ImageMagick to allow PDF processing
 if [ -f /etc/ImageMagick-6/policy.xml ]; then
+    log "Configuring ImageMagick for PDF processing..."
+    cp /etc/ImageMagick-6/policy.xml /etc/ImageMagick-6/policy.xml.backup
     sed -i 's/<policy domain="coder" rights="none" pattern="PDF" \/>/<policy domain="coder" rights="read|write" pattern="PDF" \/>/' /etc/ImageMagick-6/policy.xml
+    sed -i 's/<policy domain="resource" name="memory" value="256MiB"\/>/<policy domain="resource" name="memory" value="2GiB"\/>/' /etc/ImageMagick-6/policy.xml
+    sed -i 's/<policy domain="resource" name="map" value="512MiB"\/>/<policy domain="resource" name="map" value="4GiB"\/>/' /etc/ImageMagick-6/policy.xml
+    sed -i 's/<policy domain="resource" name="disk" value="1GiB"\/>/<policy domain="resource" name="disk" value="8GiB"\/>/' /etc/ImageMagick-6/policy.xml
 fi
+
+if [ -f /etc/ImageMagick-7/policy.xml ]; then
+    log "Configuring ImageMagick 7 for PDF processing..."
+    cp /etc/ImageMagick-7/policy.xml /etc/ImageMagick-7/policy.xml.backup
+    sed -i 's/<policy domain="coder" rights="none" pattern="PDF" \/>/<policy domain="coder" rights="read|write" pattern="PDF" \/>/' /etc/ImageMagick-7/policy.xml
+    sed -i 's/<policy domain="resource" name="memory" value="256MiB"\/>/<policy domain="resource" name="memory" value="2GiB"\/>/' /etc/ImageMagick-7/policy.xml
+    sed -i 's/<policy domain="resource" name="map" value="512MiB"\/>/<policy domain="resource" name="map" value="4GiB"\/>/' /etc/ImageMagick-7/policy.xml
+    sed -i 's/<policy domain="resource" name="disk" value="1GiB"\/>/<policy domain="resource" name="disk" value="8GiB"\/>/' /etc/ImageMagick-7/policy.xml
+fi
+
+# Configure GraphicsMagick for optimal PDF processing
+log "Configuring GraphicsMagick..."
+mkdir -p /etc/GraphicsMagick
+cat >> /etc/environment << 'EOF'
+# GraphicsMagick configuration for Giga-PDF
+export MAGICK_TMPDIR=/tmp
+export MAGICK_MEMORY_LIMIT=2GB
+export MAGICK_MAP_LIMIT=4GB
+export MAGICK_DISK_LIMIT=8GB
+export MAGICK_AREA_LIMIT=100MP
+export MAGICK_WIDTH_LIMIT=50KP
+export MAGICK_HEIGHT_LIMIT=50KP
+EOF
 
 #################################################
 # SUPERVISOR INSTALLATION
@@ -334,6 +377,37 @@ if command -v tesseract &> /dev/null; then
     echo -e "${GREEN}✓${NC} Tesseract: $(tesseract --version 2>&1 | head -1)"
 else
     echo -e "${RED}✗${NC} Tesseract installation failed"
+fi
+
+# Check PDF tools
+if command -v pdftocairo &> /dev/null; then
+    echo -e "${GREEN}✓${NC} pdftocairo: Installed"
+else
+    echo -e "${YELLOW}!${NC} pdftocairo not installed (affects PDF quality)"
+fi
+
+if command -v pdf2svg &> /dev/null; then
+    echo -e "${GREEN}✓${NC} pdf2svg: Installed"
+else
+    echo -e "${YELLOW}!${NC} pdf2svg not installed (vector graphics extraction)"
+fi
+
+if command -v gm &> /dev/null; then
+    echo -e "${GREEN}✓${NC} GraphicsMagick: Installed"
+else
+    echo -e "${YELLOW}!${NC} GraphicsMagick not installed (image processing)"
+fi
+
+if command -v inkscape &> /dev/null; then
+    echo -e "${GREEN}✓${NC} Inkscape: Installed"
+else
+    echo -e "${YELLOW}!${NC} Inkscape not installed (SVG processing)"
+fi
+
+if command -v rsvg-convert &> /dev/null; then
+    echo -e "${GREEN}✓${NC} librsvg: Installed"
+else
+    echo -e "${YELLOW}!${NC} librsvg not installed (SVG conversion)"
 fi
 
 # Check Docker

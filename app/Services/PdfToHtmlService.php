@@ -52,6 +52,32 @@ class PdfToHtmlService
     }
 
     /**
+     * Convert PDF to self-contained HTML with base64 embedded images.
+     *
+     * @param string $pdfPath Path to the PDF file.
+     * @return string The self-contained HTML content.
+     */
+    public function convertPdfToSelfContainedHtml($pdfPath)
+    {
+        try {
+            // Use the base64 converter specifically
+            $html = $this->extractWithBase64Converter($pdfPath);
+            
+            if ($html) {
+                return $html;
+            }
+        } catch (Exception $e) {
+            Log::error('PDF to self-contained HTML conversion failed.', [
+                'pdf_path' => $pdfPath,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Return error HTML if conversion fails
+        return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Erreur</title></head><body><div>Erreur: Impossible de convertir le PDF</div></body></html>';
+    }
+
+    /**
      * Extract content using a chain of PyMuPDF scripts defined in the config.
      *
      * @param string $pdfPath
@@ -202,5 +228,53 @@ class PdfToHtmlService
             },
             $html
         );
+    }
+
+    /**
+     * Extract content using the base64 converter for self-contained HTML.
+     *
+     * @param string $pdfPath
+     * @return string|null The resulting self-contained HTML, or null on failure.
+     */
+    private function extractWithBase64Converter($pdfPath)
+    {
+        $scriptPath = Config::get('pdf_converter.converters.base64');
+        
+        if (!$scriptPath) {
+            // Fallback to direct path if not in config
+            $scriptPath = resource_path('scripts/python/pymupdf_converter_base64.py');
+        }
+        
+        if (!File::exists($scriptPath)) {
+            Log::error("Base64 converter script not found.", ['path' => $scriptPath]);
+            return null;
+        }
+
+        $process = new Process([
+            'python3',
+            $scriptPath,
+            $pdfPath,
+        ]);
+
+        $process->setTimeout(120); // 2 minutes timeout
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            $output = $process->getOutput();
+            if ($output && strpos($output, '<!DOCTYPE html>') !== false) {
+                Log::info("Successfully converted PDF to self-contained HTML with base64 images.");
+                return $output;
+            }
+        }
+
+        // Log error if conversion failed
+        $errorOutput = $process->getErrorOutput();
+        Log::error("Base64 PDF conversion failed.", [
+            'script' => $scriptPath,
+            'exit_code' => $process->getExitCode(),
+            'error' => substr($errorOutput, 0, 1000),
+        ]);
+
+        return null;
     }
 }

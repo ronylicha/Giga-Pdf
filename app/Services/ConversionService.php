@@ -6,6 +6,7 @@ use App\Exceptions\ConversionFailedException;
 use App\Exceptions\InvalidDocumentException;
 use App\Models\Conversion;
 use App\Models\Document;
+use App\Services\PdfToHtmlService;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -71,6 +72,12 @@ class ConversionService
         mkdir($tempDir, 0755, true);
 
         try {
+            // Special handling for PDF to HTML conversion with base64
+            if ($fromFormat === 'pdf' && $toFormat === 'html') {
+                $this->convertPdfToHtmlWithBase64($inputPath, $outputPath);
+                return;
+            }
+            
             // Special handling for PDF to Excel/Calc conversions
             if ($fromFormat === 'pdf' && in_array($toFormat, ['xlsx', 'xls', 'ods', 'csv'])) {
                 $this->convertPdfToSpreadsheet($inputPath, $outputPath, $toFormat, $tempDir);
@@ -537,6 +544,32 @@ PYTHON;
             }
             @rmdir($dir);
         }
+    }
+
+    /**
+     * Convert PDF to HTML with base64 embedded images
+     */
+    protected function convertPdfToHtmlWithBase64(string $inputPath, string $outputPath): void
+    {
+        $pdfToHtmlService = new PdfToHtmlService();
+        
+        // Convert PDF to self-contained HTML
+        $htmlContent = $pdfToHtmlService->convertPdfToSelfContainedHtml($inputPath);
+        
+        if (!$htmlContent || strpos($htmlContent, 'Erreur') !== false) {
+            throw new ConversionFailedException("Failed to convert PDF to HTML with base64 images");
+        }
+        
+        // Save the HTML content to the output path
+        if (file_put_contents($outputPath, $htmlContent) === false) {
+            throw new ConversionFailedException("Failed to save HTML output");
+        }
+        
+        Log::info('Successfully converted PDF to self-contained HTML', [
+            'input' => $inputPath,
+            'output' => $outputPath,
+            'size' => strlen($htmlContent)
+        ]);
     }
 
     /**

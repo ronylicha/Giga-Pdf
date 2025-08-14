@@ -71,6 +71,12 @@ class ConversionService
         mkdir($tempDir, 0755, true);
 
         try {
+            // Special handling for PDF to Excel/Calc conversions
+            if ($fromFormat === 'pdf' && in_array($toFormat, ['xlsx', 'xls', 'ods', 'csv'])) {
+                $this->convertPdfToSpreadsheet($inputPath, $outputPath, $toFormat, $tempDir);
+                return;
+            }
+
             // Determine the appropriate filter for the conversion
             $filter = $this->getLibreOfficeFilter($fromFormat, $toFormat);
 
@@ -191,14 +197,9 @@ class ConversionService
                 'input' => 'writer_pdf_import',
                 'output' => 'MS Word 97',
             ],
-            'pdf_to_xlsx' => [
-                'input' => 'calc_pdf_import',
-                'output' => 'Calc MS Excel 2007 XML',
-            ],
-            'pdf_to_xls' => [
-                'input' => 'calc_pdf_import',
-                'output' => 'MS Excel 97',
-            ],
+            // PDF to Excel/Calc conversions are handled by convertPdfToSpreadsheet method
+            // Removed: pdf_to_xlsx, pdf_to_xls, pdf_to_ods
+            
             'pdf_to_pptx' => [
                 'input' => 'impress_pdf_import',
                 'output' => 'Impress MS PowerPoint 2007 XML',
@@ -210,10 +211,6 @@ class ConversionService
             'pdf_to_odt' => [
                 'input' => 'writer_pdf_import',
                 'output' => 'writer8',
-            ],
-            'pdf_to_ods' => [
-                'input' => 'calc_pdf_import',
-                'output' => 'calc8',
             ],
             'pdf_to_odp' => [
                 'input' => 'impress_pdf_import',
@@ -315,6 +312,215 @@ class ConversionService
         }
 
         return null;
+    }
+
+    /**
+     * Convert PDF to Spreadsheet format (Excel, Calc, CSV)
+     * Uses alternative method since direct PDF to Excel conversion crashes LibreOffice
+     */
+    protected function convertPdfToSpreadsheet(string $inputPath, string $outputPath, string $toFormat, string $tempDir): void
+    {
+        try {
+            // Use Python with tabula-py or camelot for PDF table extraction
+            $pythonScript = storage_path('app/scripts/pdf_to_excel.py');
+            
+            // If Python script doesn't exist, create it
+            if (!file_exists($pythonScript)) {
+                $this->createPdfToExcelScript($pythonScript);
+            }
+            
+            // Try Python conversion first
+            $tempOutput = $tempDir . '/output.' . $toFormat;
+            $command = sprintf(
+                'python3 %s %s %s %s 2>&1',
+                escapeshellarg($pythonScript),
+                escapeshellarg($inputPath),
+                escapeshellarg($tempOutput),
+                escapeshellarg($toFormat)
+            );
+            
+            exec($command, $output, $returnCode);
+            
+            if ($returnCode === 0 && file_exists($tempOutput)) {
+                rename($tempOutput, $outputPath);
+                return;
+            }
+            
+            // Fallback: Extract text and create CSV/Excel manually
+            Log::info('Python conversion failed, using fallback method', [
+                'returnCode' => $returnCode,
+                'output' => implode("\n", $output)
+            ]);
+            
+            // Extract text from PDF using pdftotext
+            $textFile = $tempDir . '/extracted.txt';
+            $extractCommand = sprintf(
+                'pdftotext -layout %s %s 2>&1',
+                escapeshellarg($inputPath),
+                escapeshellarg($textFile)
+            );
+            
+            exec($extractCommand, $extractOutput, $extractCode);
+            
+            if ($extractCode !== 0 || !file_exists($textFile)) {
+                throw new ConversionFailedException(
+                    "Impossible d'extraire le texte du PDF: " . implode("\n", $extractOutput)
+                );
+            }
+            
+            // Convert text to CSV
+            $csvFile = $tempDir . '/output.csv';
+            $this->textToCsv($textFile, $csvFile);
+            
+            // If target format is CSV, we're done
+            if ($toFormat === 'csv') {
+                rename($csvFile, $outputPath);
+                return;
+            }
+            
+            // Convert CSV to Excel/ODS using LibreOffice
+            $userProfile = storage_path('app/libreoffice/config');
+            $cacheDir = storage_path('app/libreoffice/cache');
+            
+            $filter = match($toFormat) {
+                'xlsx' => 'Calc MS Excel 2007 XML',
+                'xls' => 'MS Excel 97',
+                'ods' => 'calc8',
+                default => 'Calc MS Excel 2007 XML'
+            };
+            
+            $convertCommand = sprintf(
+                'env HOME=%s libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore -env:UserInstallation=file://%s --convert-to %s:%s --outdir %s %s 2>&1',
+                escapeshellarg($cacheDir),
+                $userProfile,
+                $toFormat,
+                escapeshellarg($filter),
+                escapeshellarg($tempDir),
+                escapeshellarg($csvFile)
+            );
+            
+            exec($convertCommand, $convertOutput, $convertCode);
+            
+            if ($convertCode !== 0) {
+                throw new ConversionFailedException(
+                    "Conversion CSV vers Excel échouée: " . implode("\n", $convertOutput)
+                );
+            }
+            
+            // Find converted file
+            $convertedFile = $this->findConvertedFile($tempDir, $csvFile, $toFormat);
+            
+            if (!$convertedFile) {
+                throw new ConversionFailedException("Fichier Excel converti non trouvé");
+            }
+            
+            rename($convertedFile, $outputPath);
+            
+        } catch (Exception $e) {
+            Log::error('PDF to Spreadsheet conversion failed', [
+                'error' => $e->getMessage(),
+                'input' => $inputPath,
+                'format' => $toFormat
+            ]);
+            throw $e;
+        }
+    }
+    
+    /**
+     * Convert extracted text to CSV format
+     */
+    protected function textToCsv(string $textFile, string $csvFile): void
+    {
+        $lines = file($textFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $csvData = [];
+        
+        foreach ($lines as $line) {
+            // Split line by multiple spaces (assuming table layout)
+            $cells = preg_split('/\s{2,}/', trim($line));
+            if (!empty($cells)) {
+                $csvData[] = $cells;
+            }
+        }
+        
+        // Write CSV
+        $fp = fopen($csvFile, 'w');
+        foreach ($csvData as $row) {
+            fputcsv($fp, $row, ',', '"', '\\');
+        }
+        fclose($fp);
+    }
+    
+    /**
+     * Create Python script for PDF to Excel conversion
+     */
+    protected function createPdfToExcelScript(string $scriptPath): void
+    {
+        $scriptDir = dirname($scriptPath);
+        if (!is_dir($scriptDir)) {
+            mkdir($scriptDir, 0755, true);
+        }
+        
+        $script = <<<'PYTHON'
+#!/usr/bin/env python3
+import sys
+import os
+
+def convert_pdf_to_excel(input_file, output_file, format_type):
+    try:
+        # Try using tabula-py if available
+        import tabula
+        
+        if format_type == 'csv':
+            tabula.convert_into(input_file, output_file, output_format="csv", pages="all")
+        else:
+            # For Excel formats, first convert to CSV then use pandas
+            import pandas as pd
+            import tempfile
+            
+            with tempfile.NamedTemporaryFile(suffix='.csv', delete=False) as tmp:
+                tabula.convert_into(input_file, tmp.name, output_format="csv", pages="all")
+                df = pd.read_csv(tmp.name)
+                
+                if format_type in ['xlsx', 'xls']:
+                    df.to_excel(output_file, index=False, engine='openpyxl' if format_type == 'xlsx' else 'xlwt')
+                else:
+                    df.to_csv(output_file, index=False)
+                
+                os.unlink(tmp.name)
+        
+        return 0
+        
+    except ImportError:
+        # Try camelot if tabula is not available
+        try:
+            import camelot
+            tables = camelot.read_pdf(input_file, pages='all')
+            
+            if format_type == 'csv':
+                tables.export(output_file, f='csv')
+            else:
+                tables.export(output_file, f='excel')
+            
+            return 0
+            
+        except ImportError:
+            print("Neither tabula-py nor camelot-py is installed", file=sys.stderr)
+            return 1
+    
+    except Exception as e:
+        print(f"Error: {str(e)}", file=sys.stderr)
+        return 1
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print("Usage: python pdf_to_excel.py <input_pdf> <output_file> <format>", file=sys.stderr)
+        sys.exit(1)
+    
+    sys.exit(convert_pdf_to_excel(sys.argv[1], sys.argv[2], sys.argv[3]))
+PYTHON;
+        
+        file_put_contents($scriptPath, $script);
+        chmod($scriptPath, 0755);
     }
 
     /**

@@ -41,8 +41,8 @@ if [ "$EUID" -eq 0 ]; then
         python3-pip
     
     # Install Python PDF libraries
-    pip3 install --break-system-packages pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml 2>/dev/null || \
-    pip3 install pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml
+    pip3 install --break-system-packages pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml tabula-py pandas openpyxl xlwt 2>/dev/null || \
+    pip3 install pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml tabula-py pandas openpyxl xlwt
 else
     echo "⚠️  Please run as root to install system dependencies:"
     echo "sudo apt-get update && sudo apt-get install -y libreoffice poppler-utils tesseract-ocr imagemagick ghostscript qpdf"
@@ -91,8 +91,20 @@ else
     chmod -R 775 storage bootstrap/cache
     chmod -R 775 storage/app/libreoffice
     chmod -R 775 storage/app/conversions
-    chown -R ploi:ploi storage bootstrap/cache
-    chown -R ploi:ploi storage/app
+    chmod -R 775 storage/app/private
+    chmod -R 775 storage/app/temp
+    chmod -R 775 storage/app/documents
+    
+    # Set proper ownership - www-data for web server writable directories
+    chown -R www-data:www-data storage/app/libreoffice
+    chown -R www-data:www-data storage/app/conversions
+    chown -R www-data:www-data storage/app/private
+    chown -R www-data:www-data storage/app/public
+    chown -R www-data:www-data storage/app/temp
+    chown -R www-data:www-data storage/app/documents
+    chown -R www-data:www-data storage/framework
+    chown -R www-data:www-data storage/logs
+    chown -R www-data:www-data bootstrap/cache
 fi
 
 # Run migrations

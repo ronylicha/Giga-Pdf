@@ -87,8 +87,8 @@ install_python_packages() {
     pip3 install --user PyMuPDF Pillow reportlab
     
     # Install table extraction packages
-    pip3 install --break-system-packages tabula-py pandas pdfplumber openpyxl pytesseract 2>/dev/null || \
-    pip3 install --user tabula-py pandas pdfplumber openpyxl pytesseract
+    pip3 install --break-system-packages tabula-py pandas pdfplumber openpyxl xlwt pytesseract 2>/dev/null || \
+    pip3 install --user tabula-py pandas pdfplumber openpyxl xlwt pytesseract
     
     # Install image processing packages
     pip3 install --break-system-packages opencv-python-headless 2>/dev/null || \

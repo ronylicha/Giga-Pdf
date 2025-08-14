@@ -1371,7 +1371,8 @@ EOT;
                 'tabula-py' => 'Table extraction from PDFs',
                 'pandas' => 'Data manipulation library',
                 'pdfplumber' => 'PDF text and table extraction',
-                'openpyxl' => 'Excel file support',
+                'openpyxl' => 'Excel file support (xlsx)',
+                'xlwt' => 'Excel file support (xls)',
                 'pytesseract' => 'OCR support for scanned PDFs',
                 'opencv-python-headless' => 'Computer vision for table detection',
                 'Pillow' => 'Image processing library',
@@ -1434,8 +1435,8 @@ EOT;
         if (! $pypdfInstalled || ! $tabulaInstalled) {
             $this->warn('Some Python PDF libraries are not installed.');
             if ($this->confirm('Do you want to install them now for better PDF features?', true)) {
-                // Updated package list to include pypdf for password removal
-                $packages = 'pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml tabula-py pandas pdfplumber openpyxl pytesseract Pillow reportlab';
+                // Updated package list to include pypdf for password removal and xlwt for Excel
+                $packages = 'pypdf PyPDF2 PyMuPDF beautifulsoup4 lxml tabula-py pandas pdfplumber openpyxl xlwt pytesseract Pillow reportlab';
 
                 $this->info('Installing Python PDF libraries...');
                 $process = Process::fromShellCommandline("pip3 install $packages --break-system-packages");

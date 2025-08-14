@@ -50,6 +50,20 @@ else
     chmod -R 775 storage bootstrap/cache
     chmod -R 775 storage/app/libreoffice
     chmod -R 775 storage/app/conversions
+    chmod -R 775 storage/app/private
+    chmod -R 775 storage/app/temp
+    chmod -R 775 storage/app/documents
+    
+    # Set proper ownership - www-data for web server writable directories
+    chown -R www-data:www-data storage/app/libreoffice
+    chown -R www-data:www-data storage/app/conversions
+    chown -R www-data:www-data storage/app/private
+    chown -R www-data:www-data storage/app/public
+    chown -R www-data:www-data storage/app/temp
+    chown -R www-data:www-data storage/app/documents
+    chown -R www-data:www-data storage/framework
+    chown -R www-data:www-data storage/logs
+    chown -R www-data:www-data bootstrap/cache
 fi
 
 # Create storage link

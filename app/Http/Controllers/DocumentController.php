@@ -4002,13 +4002,42 @@ class DocumentController extends Controller
             // Store HTML content temporarily for this session
             $sessionKey = 'html_content_' . $document->id;
             session([$sessionKey => $request->html]);
+            
+            // Also save HTML as a new document for permanent storage
+            $html = $request->html;
+            
+            // Create a unique filename
+            $htmlFilename = pathinfo($document->original_name, PATHINFO_FILENAME) . '_saved_' . date('Y-m-d_His') . '.html';
+            $storedName = 'documents/' . Auth::id() . '/' . uniqid() . '.html';
+            
+            // Save HTML file
+            Storage::put($storedName, $html);
+            
+            // Create a new document record with all required fields
+            $savedDocument = Document::create([
+                'tenant_id' => $document->tenant_id,
+                'user_id' => Auth::id(),
+                'original_name' => $htmlFilename,
+                'stored_name' => $storedName,
+                'mime_type' => 'text/html',
+                'size' => strlen($html),
+                'hash' => hash('sha256', $html),
+                'metadata' => json_encode([
+                    'source_document_id' => $document->id,
+                    'saved_at' => now()->toIso8601String(),
+                ]),
+                'is_public' => false,
+                'status' => 'active',
+            ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Contenu sauvegardé temporairement',
+                'message' => 'Document sauvegardé avec succès',
+                'document_id' => $savedDocument->id,
             ]);
 
         } catch (Exception $e) {
+            Log::error('Error saving HTML', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -4065,15 +4094,22 @@ class DocumentController extends Controller
             $htmlFile = tempnam(sys_get_temp_dir(), 'edited_') . '.html';
             file_put_contents($htmlFile, $finalHtml);
 
-            // Extract actual dimensions from the final HTML for PDF generation
-            $contentBounds = $this->analyzeContentBounds($finalHtml);
-            $actualDimensions = [
-                'width' => round($contentBounds['width'] * 25.4 / 96),
-                'height' => round($contentBounds['height'] * 25.4 / 96),
-            ];
+            // Use original dimensions if available, otherwise use extracted dimensions
+            // Do NOT use content bounds as this causes the page to shrink
+            $pdfDimensions = $dimensions;
+            
+            // If we have original PDF dimensions, use those to maintain exact size
+            if ($originalDimensions) {
+                $pdfDimensions = [
+                    'width' => $originalDimensions['width_mm'],
+                    'height' => $originalDimensions['height_mm']
+                ];
+            }
 
-            // Generate PDF with actual content dimensions to avoid white bands
-            $pdfFile = $this->generatePdfFromHtmlImproved($htmlFile, $actualDimensions);
+            Log::info('Using PDF dimensions', $pdfDimensions);
+
+            // Generate PDF with page dimensions to maintain proper size
+            $pdfFile = $this->generatePdfFromHtmlImproved($htmlFile, $pdfDimensions);
 
             if (! $pdfFile) {
                 throw new Exception('Failed to generate PDF');
@@ -4312,6 +4348,21 @@ class DocumentController extends Controller
             $height = round($heightPx * 25.4 / 96);
         }
 
+        // Try to extract from data attributes first (these are set by the editor)
+        if (preg_match('/data-width="([^"]+)"/', $html, $widthMatch)) {
+            $widthValue = $widthMatch[1];
+            if (preg_match('/(\d+\.?\d*)px/', $widthValue, $pxMatch)) {
+                $width = round(floatval($pxMatch[1]) * 25.4 / 96);
+            }
+        }
+
+        if (preg_match('/data-height="([^"]+)"/', $html, $heightMatch)) {
+            $heightValue = $heightMatch[1];
+            if (preg_match('/(\d+\.?\d*)px/', $heightValue, $pxMatch)) {
+                $height = round(floatval($pxMatch[1]) * 25.4 / 96);
+            }
+        }
+
         // Fallback: try first page container
         if (preg_match('/<div[^>]*class=["\'][^"\']*pdf-page-container[^"\']*["\'][^>]*style="[^"]*width:\s*(\d+\.?\d*)px/', $html, $widthMatch)) {
             $width = round(floatval($widthMatch[1]) * 25.4 / 96);
@@ -4320,6 +4371,8 @@ class DocumentController extends Controller
         if (preg_match('/<div[^>]*class=["\'][^"\']*pdf-page-container[^"\']*["\'][^>]*style="[^"]*height:\s*(\d+\.?\d*)px/', $html, $heightMatch)) {
             $height = round(floatval($heightMatch[1]) * 25.4 / 96);
         }
+
+        Log::info('Extracted page dimensions', ['width_mm' => $width, 'height_mm' => $height]);
 
         return ['width' => $width, 'height' => $height];
     }
@@ -5013,17 +5066,21 @@ HTML;
      */
     private function buildFinalHtmlImproved($content, $dimensions)
     {
-        // Analyser le contenu pour obtenir les dimensions réelles
-        $contentBounds = $this->analyzeContentBounds($content);
-
-        // Utiliser les dimensions du contenu réel au lieu des dimensions par défaut
-        // Cela élimine les bandes blanches de 25%
-        $contentWidthPx = $contentBounds['width'];
-        $contentHeightPx = $contentBounds['height'];
-
-        // Convertir en mm pour wkhtmltopdf
-        $width = round($contentWidthPx * 25.4 / 96);
-        $height = round($contentHeightPx * 25.4 / 96);
+        // Use the provided dimensions (original PDF dimensions) if available
+        // Do NOT use content bounds as this shrinks the page
+        $width = $dimensions['width'] ?? 210; // mm
+        $height = $dimensions['height'] ?? 297; // mm
+        
+        // Convert mm to pixels for CSS (at 96 DPI)
+        $contentWidthPx = round($width * 96 / 25.4);
+        $contentHeightPx = round($height * 96 / 25.4);
+        
+        Log::info('Building final HTML with dimensions', [
+            'width_mm' => $width,
+            'height_mm' => $height,
+            'width_px' => $contentWidthPx,
+            'height_px' => $contentHeightPx
+        ]);
 
         return <<<HTML
 <!DOCTYPE html>
@@ -5045,29 +5102,44 @@ HTML;
         }
         
         html, body {
-            width: {$contentWidthPx}px;
-            height: {$contentHeightPx}px;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible;
             font-family: Arial, sans-serif;
             background: white;
             border: none;
             box-shadow: none;
+            position: relative;
         }
         
-        /* Page containers - use actual content dimensions */
+        /* Page containers - use actual content dimensions and remove ALL margins */
         .pdf-page-container {
-            width: {$contentWidthPx}px;
-            height: {$contentHeightPx}px;
-            position: relative;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: {$contentWidthPx}px !important;
+            height: {$contentHeightPx}px !important;
             page-break-inside: avoid;
-            overflow: hidden;
-            margin: 0;
-            padding: 0;
+            overflow: visible;
+            margin: 0 !important;
+            padding: 0 !important;
             background: white;
             border: none;
             box-shadow: none;
+            transform: none !important;
+        }
+        
+        /* Ensure no wrapper margins */
+        #pdfContent {
+            margin: 0 !important;
+            padding: 0 !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: {$contentWidthPx}px !important;
+            height: {$contentHeightPx}px !important;
         }
         
         /* For single page documents - avoid all breaks */
@@ -5091,11 +5163,23 @@ HTML;
         }
         
         /* Preserve ALL absolute positioning exactly as is */
-        .pdf-text, .pdf-element, .pdf-image, 
+        .pdf-text, .pdf-element, .pdf-image, .pdf-vector, .pdf-line,
         div[style*="position: absolute"],
         img[style*="position: absolute"],
         span[style*="position: absolute"] {
             /* Let inline styles handle positioning */
+        }
+        
+        /* Vector elements and lines */
+        .pdf-vector {
+            position: absolute !important;
+            z-index: 2;
+        }
+        
+        .pdf-line {
+            position: absolute !important;
+            z-index: 3;
+            pointer-events: none;
         }
         
         /* Images - keep original positioning */
@@ -5108,8 +5192,17 @@ HTML;
         
         /* For absolutely positioned images, preserve their dimensions */
         img[style*="position: absolute"] {
-            max-width: none;
+            max-width: none !important;
             height: auto;
+        }
+        
+        /* Vector images - ensure they are visible */
+        .pdf-vector, img.pdf-vector {
+            position: absolute !important;
+            z-index: 2 !important;
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
         }
         
         /* Tables */
@@ -5140,15 +5233,22 @@ HTML;
         /* Print-specific styles */
         @media print {
             html, body {
-                width: {$contentWidthPx}px;
-                height: {$contentHeightPx}px;
+                width: 100%;
+                height: 100%;
+                margin: 0 !important;
+                padding: 0 !important;
                 print-color-adjust: exact;
                 -webkit-print-color-adjust: exact;
             }
             
             .pdf-page-container {
-                width: {$contentWidthPx}px;
-                height: {$contentHeightPx}px;
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: {$contentWidthPx}px !important;
+                height: {$contentHeightPx}px !important;
+                margin: 0 !important;
+                padding: 0 !important;
             }
         }
     </style>
@@ -5266,11 +5366,11 @@ HTML;
         $widthPx = round($width * 96 / 25.4);
         $heightPx = round($height * 96 / 25.4);
 
-        // wkhtmltopdf command optimized for exact positioning without shadows
+        // wkhtmltopdf command optimized for exact positioning without ANY margins
         $command = sprintf(
             'wkhtmltopdf ' .
             '--page-width %dmm --page-height %dmm ' .
-            '--margin-top 0 --margin-bottom 0 --margin-left 0 --margin-right 0 ' .
+            '--margin-top 0mm --margin-bottom 0mm --margin-left 0mm --margin-right 0mm ' .
             '--disable-smart-shrinking ' .
             '--print-media-type ' .
             '--enable-local-file-access ' .
@@ -5285,8 +5385,11 @@ HTML;
             '--enable-javascript ' .
             '--viewport-size %dx%d ' . // Exact viewport size
             '--no-outline ' . // Disable outline/border
-            '--no-background ' . // Disable page background (we set our own)
-            '--background ' . // But enable HTML background
+            '--background ' . // Enable HTML background to show vector images
+            '--enable-forms ' . // Enable form elements
+            '--zoom 1 ' . // Ensure no zoom
+            '--disable-external-links ' . // No external resources
+            '--no-pdf-compression ' . // Keep vector data
             '%s %s 2>&1',
             $width,
             $height,

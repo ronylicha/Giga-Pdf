@@ -21,13 +21,13 @@ def pdf_to_html_base64(pdf_path):
 <style>
 body {
     margin: 0;
-    padding: 20px;
+    padding: 0;
     background: #f5f5f5;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 .pdf-page-container {
     position: relative;
-    margin: 20px auto;
+    margin: 0 auto;
     background: white;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     overflow: hidden;
@@ -62,6 +62,11 @@ body {
     position: absolute;
     z-index: 2;
 }
+.pdf-line {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+}
 </style>
 </head>
 <body>""")
@@ -89,8 +94,11 @@ body {
         except Exception as e:
             sys.stderr.write(f"Error extracting raster images on page {page_num + 1}: {e}\n")
             
-        # --- Extract vector drawings ---
+        # --- Extract vector drawings and lines ---
         vector_drawings = []
+        horizontal_lines = []
+        
+        # Method 1: Standard drawings extraction
         try:
             drawings = page.get_drawings()
             for drawing in drawings:
@@ -98,6 +106,64 @@ body {
                     vector_drawings.append(drawing)
         except Exception as e:
             sys.stderr.write(f"Error extracting vector drawings on page {page_num + 1}: {e}\n")
+        
+        # Method 2: Extract paths (includes lines not detected as drawings)
+        try:
+            paths = page.get_cdrawings()
+            for path in paths:
+                # Check if it's a horizontal line
+                items = path.get("items", [])
+                for item in items:
+                    if item[0] == "l":  # line
+                        p1, p2 = item[1], item[2]
+                        # Check if it's horizontal (y coordinates similar)
+                        if abs(p1.y - p2.y) < 2:  # tolerance of 2 pixels
+                            line_rect = fitz.Rect(min(p1.x, p2.x), min(p1.y, p2.y) - 1,
+                                                max(p1.x, p2.x), max(p1.y, p2.y) + 1)
+                            horizontal_lines.append({
+                                "rect": line_rect,
+                                "stroke": path.get("stroke", (0, 0, 0)),
+                                "width": path.get("width", 1)
+                            })
+        except Exception as e:
+            sys.stderr.write(f"Error extracting paths on page {page_num + 1}: {e}\n")
+        
+        # Method 3: Extract from page content stream (fallback for undetected lines)
+        try:
+            # Get the page's display list
+            dl = page.get_displaylist()
+            # Extract text and graphics
+            text_page = dl.get_textpage()
+            
+            # Try to find horizontal rules in the content
+            contents = page.read_contents()
+            if contents and b"re" in contents:  # rectangle operator
+                # Basic pattern matching for rectangles that might be lines
+                import re
+                # Pattern for thin rectangles (potential horizontal lines)
+                rect_pattern = re.compile(rb'(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s+re')
+                for match in rect_pattern.finditer(contents):
+                    try:
+                        x, y, w, h = map(float, match.groups())
+                        # Check if it's a horizontal line (height < 3 pixels)
+                        if h < 3 and w > 20:  # thin and wide enough
+                            line_rect = fitz.Rect(x, y, x + w, y + h)
+                            # Check if not already captured
+                            is_duplicate = False
+                            for existing in horizontal_lines:
+                                if abs(existing["rect"].y0 - line_rect.y0) < 2:
+                                    is_duplicate = True
+                                    break
+                            if not is_duplicate:
+                                horizontal_lines.append({
+                                    "rect": line_rect,
+                                    "stroke": (0, 0, 0),
+                                    "width": max(1, h)
+                                })
+                    except:
+                        pass
+        except Exception as e:
+            sys.stderr.write(f"Error extracting from content stream on page {page_num + 1}: {e}\n")
 
         # --- Add text spans to HTML ---
         for span in all_text_spans:
@@ -224,6 +290,30 @@ body {
                 
             except Exception as e:
                 sys.stderr.write(f"Error converting vector drawing {i} to base64: {e}\n")
+        
+        # --- Render horizontal lines as HTML elements ---
+        for i, line in enumerate(horizontal_lines):
+            try:
+                rect = line["rect"]
+                stroke = line.get("stroke", (0, 0, 0))
+                width = line.get("width", 1)
+                
+                # Convert stroke color to hex
+                if isinstance(stroke, tuple) and len(stroke) >= 3:
+                    color_hex = f"#{int(stroke[0]*255):02x}{int(stroke[1]*255):02x}{int(stroke[2]*255):02x}"
+                else:
+                    color_hex = "#000000"
+                
+                # Add as a div element styled as a line
+                html_parts.append(
+                    f'<div class="pdf-vector pdf-line" '
+                    f'style="position:absolute;left:{rect.x0}px;top:{rect.y0}px;'
+                    f'width:{rect.width}px;height:{max(1, width)}px;'
+                    f'background-color:{color_hex};" '
+                    f'data-line="true"></div>'
+                )
+            except Exception as e:
+                sys.stderr.write(f"Error adding horizontal line {i}: {e}\n")
 
         html_parts.append('</div>')  # Close page container
 

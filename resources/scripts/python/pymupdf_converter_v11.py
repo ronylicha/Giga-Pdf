@@ -17,7 +17,7 @@ def pdf_to_html_no_background(pdf_path, img_dir):
     html_parts.append("""<style>
 .pdf-page-container {
     position: relative;
-    margin: 20px auto;
+    margin: 0 auto;
     background: white;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     overflow: hidden;

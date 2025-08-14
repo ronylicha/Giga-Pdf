@@ -57,7 +57,7 @@ def pdf_to_perfect_html(pdf_path, img_dir):
         
         # Start page HTML
         page_html = f"""
-        <div class="pdf-page-container" style="position: relative; margin: 20px auto; width: {width}px; height: {height}px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden;">
+        <div class="pdf-page-container" style="position: relative; margin: 0 auto; width: {width}px; height: {height}px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden;">
             <!-- PDF background without text (logos, images, borders only) -->
             <img src="{img_filename}" class="pdf-page-background" style="position: absolute; top: 0; left: 0; width: {scaled_width}px; height: {scaled_height}px; transform: scale(0.333333); transform-origin: top left; pointer-events: none; user-select: none; z-index: 1;" />
             

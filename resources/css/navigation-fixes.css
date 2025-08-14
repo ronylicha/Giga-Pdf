@@ -1,83 +1,107 @@
-/* Navigation fixes for consistent alignment */
+/* Navigation Alignment Fixes - Complete Solution */
 
-/* Ensure all navigation items have consistent height and alignment */
-.navigation-container {
-    display: flex;
-    align-items: stretch;
-    height: 100%;
+/* CRITICAL: Force all nav items to be exactly the same height */
+nav .flex.h-16 {
+    height: 4rem !important;
 }
 
-/* Ensure dropdowns and links align perfectly */
-.navigation-container > * {
-    display: flex;
-    align-items: center;
+/* Main navigation container must stretch to full height */
+nav .sm\:flex.space-x-8 {
+    height: 100% !important;
+    align-items: stretch !important;
 }
 
-/* Fix for dropdown triggers to match NavLink height */
-.nav-dropdown-trigger {
-    height: 100%;
-    display: inline-flex;
-    align-items: center;
-    padding-top: 0.25rem; /* Match NavLink pt-1 */
-    padding-bottom: 0;
-    padding-left: 0.25rem; /* Match NavLink px-1 */
-    padding-right: 0.25rem;
+/* Each navigation item (NavLink and NavDropdown) must fill the height */
+nav .sm\:flex.space-x-8 > * {
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
 }
 
-/* Ensure border-bottom aligns properly */
-.nav-item-border {
-    border-bottom-width: 2px;
-    margin-bottom: -2px; /* Compensate for border to align with container */
+/* NavLink specific - ensure full height */
+nav a[href][class*="inline-flex"] {
+    height: 100% !important;
+    display: inline-flex !important;
+    align-items: center !important;
 }
 
-/* Fix dropdown container position */
-.nav-dropdown-container {
+/* NavDropdown container - must match NavLink height */
+nav .relative.h-full {
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* NavDropdown button - exact same styling as NavLink */
+nav .relative button {
+    height: 100% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+/* Remove any margin that could break alignment */
+nav .sm\:-my-px {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* Border positioning for active state */
+nav [class*="border-b-2"] {
     position: relative;
-    height: 100%;
-    display: flex;
-    align-items: stretch;
+    box-sizing: border-box;
 }
 
-/* Responsive adjustments */
+/* Fix the specific navigation links container */
+.hidden.space-x-8.sm\:-my-px.sm\:ms-10.sm\:flex.sm\:items-center {
+    height: 100% !important;
+    align-items: stretch !important;
+}
+
+/* Ensure all direct children are properly aligned */
+.hidden.space-x-8.sm\:-my-px.sm\:ms-10.sm\:flex.sm\:items-center > * {
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Override any conflicting styles from Tailwind */
 @media (min-width: 640px) {
-    /* Desktop navigation alignment */
-    .sm\:nav-items-center {
-        align-items: center !important;
+    nav .sm\:items-center {
+        align-items: stretch !important;
     }
     
-    /* Ensure consistent spacing */
-    .sm\:nav-spacing {
-        gap: 2rem; /* space-x-8 equivalent */
+    nav .sm\:flex > * {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
     }
 }
 
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-    .dark\:nav-border-color {
-        border-color: rgb(55 65 81); /* gray-700 */
-    }
+/* Dropdown positioning - ensure it opens below the nav bar */
+nav .relative {
+    position: relative;
 }
 
-/* Animation for dropdown arrow */
-.nav-dropdown-arrow {
+nav .relative .absolute {
+    top: calc(100% + 0.5rem) !important;
+    margin-top: 0 !important;
+}
+
+/* Dropdown arrow animation */
+nav svg.transition-transform {
     transition: transform 200ms ease-in-out;
 }
 
-.nav-dropdown-arrow.open {
+nav svg.rotate-180 {
     transform: rotate(180deg);
 }
 
-/* Fix for active state border positioning */
-.nav-link-active {
-    position: relative;
+/* Ensure dropdown doesn't go off-screen on right side */
+nav .relative .absolute.end-0 {
+    right: 0;
 }
 
-.nav-link-active::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: currentColor;
+/* Max height for dropdown to prevent going below viewport */
+nav .relative .absolute > div {
+    max-height: calc(100vh - 5rem);
+    overflow-y: auto;
 }

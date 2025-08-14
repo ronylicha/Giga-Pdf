@@ -68,21 +68,22 @@ const isActive = computed(() => {
     });
 });
 
-// Button classes that match NavLink styling exactly
+// Button classes that match NavLink styling exactly - without inline-flex as it's in the style
 const buttonClasses = computed(() =>
     isActive.value
-        ? 'inline-flex items-center px-1 pt-1 border-b-2 border-indigo-400 dark:border-indigo-600 text-sm font-medium leading-5 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-indigo-700 transition duration-150 ease-in-out'
-        : 'inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out'
+        ? 'px-1 pt-1 border-b-2 border-indigo-400 dark:border-indigo-600 text-sm font-medium leading-5 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-indigo-700 transition duration-150 ease-in-out'
+        : 'px-1 pt-1 border-b-2 border-transparent text-sm font-medium leading-5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 focus:outline-none focus:text-gray-700 dark:focus:text-gray-300 focus:border-gray-300 dark:focus:border-gray-700 transition duration-150 ease-in-out'
 );
 </script>
 
 <template>
-    <div class="relative">
-        <!-- Trigger button styled exactly like NavLink -->
+    <div class="relative h-full flex items-center">
+        <!-- Trigger button styled exactly like NavLink with proper height -->
         <button
             @click="open = !open"
             :class="buttonClasses"
             type="button"
+            style="height: 100%; display: inline-flex; align-items: center;"
         >
             <slot name="trigger" />
             <svg 
@@ -115,8 +116,9 @@ const buttonClasses = computed(() =>
         >
             <div
                 v-show="open"
-                class="absolute z-50 mt-2 rounded-md shadow-lg"
+                class="absolute z-50 rounded-md shadow-lg"
                 :class="[widthClass, alignmentClasses]"
+                style="top: calc(100% + 0.5rem);"
                 @click="open = false"
             >
                 <div

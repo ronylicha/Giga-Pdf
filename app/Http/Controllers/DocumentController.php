@@ -4020,6 +4020,7 @@ class DocumentController extends Controller
                 'original_name' => $htmlFilename,
                 'stored_name' => $storedName,
                 'mime_type' => 'text/html',
+                'extension' => 'html',
                 'size' => strlen($html),
                 'hash' => hash('sha256', $html),
                 'metadata' => json_encode([

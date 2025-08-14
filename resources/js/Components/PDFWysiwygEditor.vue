@@ -460,6 +460,9 @@ const zoomLevel = ref(1);
 const gridEnabled = ref(false);
 const rulersEnabled = ref(false);
 const layersVisible = ref(false);
+const annotationMode = ref(false);
+const highlightMode = ref(false);
+const highlightColor = ref('#ffff00');
 const selectedElement = ref(null);
 const selectedElements = ref([]);
 const elements = ref([]);
@@ -791,13 +794,101 @@ function toggleSignatureMode() {
 }
 
 function toggleAnnotationMode() {
-    // TODO: Implement annotation mode
-    console.log('Annotation mode');
+    if (!editor) return;
+    
+    // Toggle annotation mode
+    annotationMode.value = !annotationMode.value;
+    
+    if (annotationMode.value) {
+        // Disable other modes
+        highlightMode.value = false;
+        editor.disableHighlightMode();
+        
+        // Enable annotation mode
+        editor.enableAnnotationMode();
+    } else {
+        editor.disableAnnotationMode();
+    }
 }
 
 function toggleHighlightMode() {
-    // TODO: Implement highlight mode
-    console.log('Highlight mode');
+    if (!editor) return;
+    
+    // Toggle highlight mode
+    highlightMode.value = !highlightMode.value;
+    
+    if (highlightMode.value) {
+        // Disable other modes
+        annotationMode.value = false;
+        editor.disableAnnotationMode();
+        
+        // Show color picker or use default
+        showHighlightColorPicker();
+    } else {
+        editor.disableHighlightMode();
+    }
+}
+
+function showHighlightColorPicker() {
+    // Create color picker dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'highlight-color-picker';
+    dialog.style.cssText = `
+        position: fixed;
+        top: 100px;
+        right: 20px;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 10000;
+    `;
+    
+    dialog.innerHTML = `
+        <h4 style="margin: 0 0 10px 0; font-size: 14px;">Choose highlight color:</h4>
+        <div class="color-options" style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <button data-color="#ffff00" style="width: 30px; height: 30px; background: #ffff00; border: 1px solid #666; cursor: pointer; opacity: 0.6;"></button>
+            <button data-color="#00ff00" style="width: 30px; height: 30px; background: #00ff00; border: 1px solid #666; cursor: pointer; opacity: 0.6;"></button>
+            <button data-color="#00ffff" style="width: 30px; height: 30px; background: #00ffff; border: 1px solid #666; cursor: pointer; opacity: 0.6;"></button>
+            <button data-color="#ff00ff" style="width: 30px; height: 30px; background: #ff00ff; border: 1px solid #666; cursor: pointer; opacity: 0.6;"></button>
+            <button data-color="#ffa500" style="width: 30px; height: 30px; background: #ffa500; border: 1px solid #666; cursor: pointer; opacity: 0.6;"></button>
+        </div>
+        <div style="text-align: center;">
+            <button id="closeHighlightPicker" style="padding: 5px 15px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // Handle color selection
+    dialog.querySelectorAll('[data-color]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const color = btn.dataset.color;
+            highlightColor.value = color;
+            editor.enableHighlightMode(color);
+            
+            // Visual feedback
+            dialog.querySelectorAll('[data-color]').forEach(b => {
+                b.style.outline = 'none';
+            });
+            btn.style.outline = '2px solid #007bff';
+        });
+    });
+    
+    // Close button
+    dialog.querySelector('#closeHighlightPicker').addEventListener('click', () => {
+        dialog.remove();
+        if (!editor.mode === 'highlight') {
+            highlightMode.value = false;
+        }
+    });
+    
+    // Auto-select first color
+    const firstColor = dialog.querySelector('[data-color]');
+    if (firstColor) {
+        firstColor.click();
+    }
 }
 
 function toggleGrid() {
@@ -1940,5 +2031,172 @@ function rgbToHex(rgb) {
 
 :deep(.pdf-table-dialog button:hover) {
     opacity: 0.8;
+}
+
+/* Annotation styles */
+:deep(.pdf-annotation) {
+    position: absolute;
+    z-index: 100;
+}
+
+:deep(.annotation-marker) {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    color: #ff5722;
+    transition: transform 0.2s;
+}
+
+:deep(.annotation-marker:hover) {
+    transform: scale(1.2);
+}
+
+:deep(.annotation-bubble) {
+    position: absolute;
+    left: 30px;
+    top: -10px;
+    min-width: 200px;
+    max-width: 300px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 0;
+    display: none;
+    z-index: 101;
+}
+
+:deep(.annotation-bubble.visible) {
+    display: block;
+}
+
+:deep(.annotation-header) {
+    padding: 8px 10px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #666;
+}
+
+:deep(.annotation-author) {
+    font-weight: bold;
+    color: #333;
+}
+
+:deep(.annotation-date) {
+    font-size: 11px;
+}
+
+:deep(.annotation-delete) {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+}
+
+:deep(.annotation-delete:hover) {
+    color: #dc3545;
+}
+
+:deep(.annotation-content) {
+    padding: 10px;
+    min-height: 50px;
+    outline: none;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+:deep(.annotation-content:focus) {
+    background: #fffef0;
+}
+
+:deep(.annotation-content:empty:before) {
+    content: 'Click to add comment...';
+    color: #999;
+}
+
+/* Highlight styles */
+:deep(.pdf-highlight) {
+    position: relative;
+    display: inline;
+    opacity: 0.4;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+:deep(.pdf-highlight:hover) {
+    opacity: 0.6;
+}
+
+/* Highlight color picker */
+:deep(.highlight-color-picker) {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    padding: 15px;
+    z-index: 10000;
+}
+
+:deep(.highlight-color-picker h4) {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+:deep(.highlight-color-picker button) {
+    transition: transform 0.2s;
+}
+
+:deep(.highlight-color-picker button:hover) {
+    transform: scale(1.1);
+}
+
+/* Highlight context menu */
+:deep(.highlight-menu) {
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    z-index: 10000;
+    min-width: 150px;
+}
+
+:deep(.highlight-menu > div) {
+    padding: 5px 15px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+:deep(.highlight-menu > div:hover) {
+    background: #f5f5f5;
+}
+
+/* Mode indicators */
+:deep(.annotation-mode-indicator),
+:deep(.highlight-mode-indicator) {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: #007bff;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+:deep(.highlight-mode-indicator) {
+    background: #ffc107;
+    color: #333;
 }
 </style>

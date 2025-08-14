@@ -794,6 +794,302 @@ export class PDFEditorCore {
     }
     
     /**
+     * Enable annotation mode
+     */
+    enableAnnotationMode() {
+        this.mode = 'annotation';
+        this.container.style.cursor = 'crosshair';
+        
+        // Add annotation click handler
+        this.annotationHandler = (e) => {
+            if (e.target === this.container || e.target.classList.contains('pdf-page-container')) {
+                const rect = this.container.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                this.addAnnotation(x, y);
+            }
+        };
+        
+        this.container.addEventListener('click', this.annotationHandler);
+        this.notifyObservers('mode-changed', 'annotation');
+    }
+    
+    /**
+     * Disable annotation mode
+     */
+    disableAnnotationMode() {
+        this.mode = 'normal';
+        this.container.style.cursor = 'default';
+        
+        if (this.annotationHandler) {
+            this.container.removeEventListener('click', this.annotationHandler);
+            this.annotationHandler = null;
+        }
+        
+        this.notifyObservers('mode-changed', 'normal');
+    }
+    
+    /**
+     * Add annotation at position
+     */
+    addAnnotation(x, y, text = '') {
+        const annotation = document.createElement('div');
+        annotation.className = 'pdf-annotation pdf-added';
+        annotation.dataset.annotationId = this.generateId();
+        
+        // Create annotation marker
+        const marker = document.createElement('div');
+        marker.className = 'annotation-marker';
+        marker.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 9h6v6h-2.5l-1.5 3-1.5-3H9V9z"/>
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+            </svg>
+        `;
+        
+        // Create annotation bubble
+        const bubble = document.createElement('div');
+        bubble.className = 'annotation-bubble';
+        bubble.contentEditable = true;
+        bubble.innerHTML = `
+            <div class="annotation-header">
+                <span class="annotation-author">User</span>
+                <span class="annotation-date">${new Date().toLocaleDateString()}</span>
+                <button class="annotation-delete">×</button>
+            </div>
+            <div class="annotation-content" contenteditable="true">${text || 'Click to add comment...'}</div>
+        `;
+        
+        annotation.appendChild(marker);
+        annotation.appendChild(bubble);
+        
+        // Position annotation
+        annotation.style.cssText = `
+            position: absolute;
+            left: ${x}px;
+            top: ${y}px;
+            z-index: 100;
+        `;
+        
+        // Add to container
+        const pageContainer = this.container.querySelector('.pdf-page-container') || this.container;
+        pageContainer.appendChild(annotation);
+        
+        // Setup event handlers
+        marker.addEventListener('click', () => {
+            bubble.classList.toggle('visible');
+        });
+        
+        bubble.querySelector('.annotation-delete').addEventListener('click', () => {
+            annotation.remove();
+            this.saveState();
+        });
+        
+        bubble.querySelector('.annotation-content').addEventListener('blur', () => {
+            this.saveState();
+        });
+        
+        // Register annotation
+        const id = annotation.dataset.annotationId;
+        this.elements.set(id, {
+            id,
+            element: annotation,
+            type: 'annotation',
+            original: null,
+            modified: true,
+            isNew: true
+        });
+        
+        this.makeElementInteractive(annotation);
+        this.saveState();
+        this.notifyObservers('annotation-added', annotation);
+        
+        return annotation;
+    }
+    
+    /**
+     * Enable highlight mode
+     */
+    enableHighlightMode(color = '#ffff00') {
+        this.mode = 'highlight';
+        this.highlightColor = color;
+        this.container.style.cursor = 'text';
+        
+        // Add selection handler
+        this.highlightHandler = () => {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0 && !selection.isCollapsed) {
+                const range = selection.getRangeAt(0);
+                
+                // Check if selection is within our container
+                if (this.container.contains(range.commonAncestorContainer)) {
+                    this.highlightSelection(range, this.highlightColor);
+                    selection.removeAllRanges();
+                }
+            }
+        };
+        
+        document.addEventListener('mouseup', this.highlightHandler);
+        this.notifyObservers('mode-changed', 'highlight');
+    }
+    
+    /**
+     * Disable highlight mode
+     */
+    disableHighlightMode() {
+        this.mode = 'normal';
+        this.container.style.cursor = 'default';
+        
+        if (this.highlightHandler) {
+            document.removeEventListener('mouseup', this.highlightHandler);
+            this.highlightHandler = null;
+        }
+        
+        this.notifyObservers('mode-changed', 'normal');
+    }
+    
+    /**
+     * Highlight text selection
+     */
+    highlightSelection(range, color) {
+        // Create highlight wrapper
+        const highlight = document.createElement('span');
+        highlight.className = 'pdf-highlight pdf-added';
+        highlight.style.backgroundColor = color;
+        highlight.style.opacity = '0.4';
+        highlight.dataset.highlightId = this.generateId();
+        highlight.dataset.color = color;
+        
+        try {
+            // Wrap the selected content
+            range.surroundContents(highlight);
+        } catch (e) {
+            // If surroundContents fails (e.g., partial selection across elements),
+            // extract and wrap the contents
+            const contents = range.extractContents();
+            highlight.appendChild(contents);
+            range.insertNode(highlight);
+        }
+        
+        // Add context menu for highlight
+        highlight.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.showHighlightMenu(e, highlight);
+        });
+        
+        // Register highlight
+        const id = highlight.dataset.highlightId;
+        this.elements.set(id, {
+            id,
+            element: highlight,
+            type: 'highlight',
+            original: null,
+            modified: true,
+            isNew: true
+        });
+        
+        this.saveState();
+        this.notifyObservers('highlight-added', highlight);
+        
+        return highlight;
+    }
+    
+    /**
+     * Show highlight context menu
+     */
+    showHighlightMenu(event, highlight) {
+        // Remove existing menu if any
+        const existingMenu = document.querySelector('.highlight-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+        
+        // Create context menu
+        const menu = document.createElement('div');
+        menu.className = 'highlight-menu';
+        menu.style.cssText = `
+            position: fixed;
+            left: ${event.clientX}px;
+            top: ${event.clientY}px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 5px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 10000;
+        `;
+        
+        // Color options
+        const colors = [
+            { name: 'Yellow', value: '#ffff00' },
+            { name: 'Green', value: '#00ff00' },
+            { name: 'Blue', value: '#00ffff' },
+            { name: 'Pink', value: '#ff00ff' },
+            { name: 'Orange', value: '#ffa500' }
+        ];
+        
+        colors.forEach(color => {
+            const item = document.createElement('div');
+            item.style.cssText = `
+                padding: 5px 15px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            `;
+            item.innerHTML = `
+                <span style="width: 16px; height: 16px; background: ${color.value}; border: 1px solid #666; opacity: 0.4;"></span>
+                <span>${color.name}</span>
+            `;
+            item.addEventListener('click', () => {
+                highlight.style.backgroundColor = color.value;
+                highlight.dataset.color = color.value;
+                menu.remove();
+                this.saveState();
+            });
+            menu.appendChild(item);
+        });
+        
+        // Separator
+        const separator = document.createElement('div');
+        separator.style.cssText = 'border-top: 1px solid #ddd; margin: 5px 0;';
+        menu.appendChild(separator);
+        
+        // Remove option
+        const removeItem = document.createElement('div');
+        removeItem.style.cssText = `
+            padding: 5px 15px;
+            cursor: pointer;
+            color: #dc3545;
+        `;
+        removeItem.textContent = 'Remove highlight';
+        removeItem.addEventListener('click', () => {
+            const parent = highlight.parentNode;
+            while (highlight.firstChild) {
+                parent.insertBefore(highlight.firstChild, highlight);
+            }
+            highlight.remove();
+            menu.remove();
+            this.saveState();
+        });
+        menu.appendChild(removeItem);
+        
+        document.body.appendChild(menu);
+        
+        // Remove menu on click outside
+        const removeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', removeMenu);
+            }
+        };
+        setTimeout(() => {
+            document.addEventListener('click', removeMenu);
+        }, 0);
+    }
+    
+    /**
      * Create SVG shape
      */
     createSVGShape(shapeType, properties) {
@@ -1084,8 +1380,8 @@ export class PDFEditorCore {
         const styleMap = new Map();
         
         // Get all PDF elements from the original container
-        // Include all images, vectors, lines, tables and added elements
-        const originalElements = this.container.querySelectorAll('.pdf-text, .pdf-image, .pdf-vector, .pdf-line, .pdf-added, .pdf-table-wrapper, img, svg, div[data-line="true"]');
+        // Include all images, vectors, lines, tables, annotations, highlights and added elements
+        const originalElements = this.container.querySelectorAll('.pdf-text, .pdf-image, .pdf-vector, .pdf-line, .pdf-added, .pdf-table-wrapper, .pdf-annotation, .pdf-highlight, img, svg, div[data-line="true"]');
         originalElements.forEach(el => {
             const id = Math.random().toString(36).substr(2, 9);
             el.dataset.tempId = id;
@@ -1265,6 +1561,36 @@ body {
 .pdf-table th {
     background: #f0f0f0;
     font-weight: bold;
+}
+.pdf-annotation {
+    position: absolute !important;
+    z-index: 100;
+}
+.annotation-marker {
+    width: 24px;
+    height: 24px;
+    color: #ff5722;
+}
+.annotation-bubble {
+    position: absolute;
+    left: 30px;
+    top: -10px;
+    min-width: 200px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 10px;
+    display: none;
+    z-index: 101;
+}
+.annotation-bubble.visible {
+    display: block;
+}
+.pdf-highlight {
+    display: inline;
+    opacity: 0.4;
+    position: relative;
 }
 @media print {
     body {

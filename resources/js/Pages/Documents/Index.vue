@@ -181,8 +181,11 @@
 
                             <!-- File Type Badge -->
                             <div class="absolute top-2 right-2">
-                                <span :class="getFileTypeBadgeClass(document.extension)" class="px-2 py-1 text-xs font-semibold rounded">
+                                <span v-if="document.extension" :class="getFileTypeBadgeClass(document.extension)" class="px-2 py-1 text-xs font-semibold rounded">
                                     {{ document.extension.toUpperCase() }}
+                                </span>
+                                <span v-else class="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-800">
+                                    N/A
                                 </span>
                             </div>
                         </div>
@@ -301,8 +304,11 @@
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <span :class="getFileTypeBadgeClass(document.extension)" class="px-2 py-1 text-xs font-semibold rounded">
+                                    <span v-if="document.extension" :class="getFileTypeBadgeClass(document.extension)" class="px-2 py-1 text-xs font-semibold rounded">
                                         {{ document.extension.toUpperCase() }}
+                                    </span>
+                                    <span v-else class="px-2 py-1 text-xs font-semibold rounded bg-gray-100 text-gray-800">
+                                        N/A
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -582,19 +588,20 @@ const filteredDocuments = computed(() => {
     // Apply search filter
     if (filters.value.search) {
         docs = docs.filter(doc => 
-            doc.original_name.toLowerCase().includes(filters.value.search.toLowerCase())
+            doc.original_name && doc.original_name.toLowerCase().includes(filters.value.search.toLowerCase())
         );
     }
     
     // Apply type filter
     if (filters.value.type) {
         docs = docs.filter(doc => {
+            const ext = doc.extension || '';
             switch(filters.value.type) {
-                case 'pdf': return doc.extension === 'pdf';
-                case 'doc': return ['doc', 'docx'].includes(doc.extension);
-                case 'xls': return ['xls', 'xlsx'].includes(doc.extension);
-                case 'ppt': return ['ppt', 'pptx'].includes(doc.extension);
-                case 'image': return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'].includes(doc.extension);
+                case 'pdf': return ext === 'pdf';
+                case 'doc': return ['doc', 'docx'].includes(ext);
+                case 'xls': return ['xls', 'xlsx'].includes(ext);
+                case 'ppt': return ['ppt', 'pptx'].includes(ext);
+                case 'image': return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'].includes(ext);
                 default: return true;
             }
         });
@@ -636,6 +643,7 @@ const formatDate = (date) => {
 };
 
 const getFileTypeBadgeClass = (extension) => {
+    if (!extension) return 'bg-gray-100 text-gray-800';
     const ext = extension.toLowerCase();
     if (ext === 'pdf') return 'bg-red-100 text-red-800';
     if (['doc', 'docx'].includes(ext)) return 'bg-blue-100 text-blue-800';

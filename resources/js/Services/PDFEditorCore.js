@@ -42,6 +42,9 @@ export class PDFEditorCore {
             const id = el.dataset.elementId || this.generateId();
             el.dataset.elementId = id;
             
+            // Add control icons to each element
+            this.addControlIcons(el);
+            
             this.elements.set(id, {
                 id,
                 element: el,
@@ -1674,6 +1677,76 @@ body { margin: 0; padding: 20px; background: #f5f5f5; }
     
     generateId() {
         return 'element-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    }
+    
+    /**
+     * Add control icons (move and delete) to an element
+     */
+    addControlIcons(element) {
+        // Skip if controls already exist
+        if (element.querySelector('.element-controls')) {
+            return;
+        }
+        
+        // Make element position relative if needed for controls
+        if (window.getComputedStyle(element).position === 'static') {
+            element.style.position = 'relative';
+        }
+        
+        // Create controls container
+        const controls = document.createElement('div');
+        controls.className = 'element-controls';
+        
+        // Create move icon
+        const moveIcon = document.createElement('div');
+        moveIcon.className = 'control-move';
+        moveIcon.title = 'Déplacer';
+        moveIcon.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            this.startDrag(e, element);
+        });
+        
+        // Create delete icon
+        const deleteIcon = document.createElement('div');
+        deleteIcon.className = 'control-delete';
+        deleteIcon.title = 'Supprimer';
+        deleteIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.deleteElement(element);
+        });
+        
+        // Add icons to controls
+        controls.appendChild(moveIcon);
+        controls.appendChild(deleteIcon);
+        
+        // Add controls to element
+        element.appendChild(controls);
+    }
+    
+    /**
+     * Delete an element
+     */
+    deleteElement(element) {
+        const id = element.dataset.elementId;
+        
+        // Save to history before deleting
+        this.saveToHistory();
+        
+        // Remove from DOM
+        element.remove();
+        
+        // Remove from elements map
+        this.elements.delete(id);
+        
+        // Remove from selection
+        this.selectedElements.delete(element);
+        
+        // Notify observers
+        this.notifyObservers({
+            type: 'delete',
+            element: element,
+            id: id
+        });
     }
     
     getElementType(element) {

@@ -7,6 +7,107 @@
     overflow: hidden;
 }
 
+/* ===== HOVER AND SELECTION IMPROVEMENTS ===== */
+
+/* Make hover area fit text exactly */
+.draggable-element,
+.pdf-text {
+    display: inline-block !important;
+    padding: 0 !important;
+    margin: 0;
+    transition: background-color 0.2s ease;
+    position: relative; /* Allow controls to be positioned relative to text */
+}
+
+/* For absolutely positioned PDF elements, preserve their positioning */
+p[style*="position:absolute"].draggable-element,
+p[style*="position:absolute"].pdf-text {
+    position: absolute !important; /* Override to maintain absolute positioning */
+}
+
+/* Hover effect only on text area */
+.draggable-element:hover,
+.pdf-text:hover {
+    background-color: rgba(59, 130, 246, 0.1);
+    outline: 1px solid rgba(59, 130, 246, 0.3);
+    outline-offset: 0;
+    cursor: move;
+}
+
+/* Control icons container */
+.element-controls {
+    position: absolute;
+    top: -35px;
+    left: 0;
+    display: none;
+    flex-direction: row;
+    gap: 4px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 4px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    z-index: 32;
+    pointer-events: auto; /* Ensure controls are clickable */
+    white-space: nowrap; /* Prevent wrapping */
+}
+
+/* Show controls on hover */
+.draggable-element:hover .element-controls,
+.pdf-text:hover .element-controls {
+    display: flex;
+}
+
+/* Move icon */
+.control-move {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: move;
+    background: #f3f4f6;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.control-move:hover {
+    background: #e5e7eb;
+}
+
+.control-move::before {
+    content: "⋮⋮";
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: bold;
+    letter-spacing: -2px;
+}
+
+/* Delete icon */
+.control-delete {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: #fee2e2;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.control-delete:hover {
+    background: #fecaca;
+}
+
+.control-delete::before {
+    content: "×";
+    font-size: 18px;
+    color: #dc2626;
+    font-weight: bold;
+    line-height: 1;
+}
+
 /* Prevent text duplication */
 .pdf-pages-wrapper p,
 .pdf-pages-wrapper span,

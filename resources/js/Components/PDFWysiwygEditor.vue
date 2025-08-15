@@ -536,6 +536,20 @@ onMounted(async () => {
         
         if (content) {
             console.log('Found #pdfContent div');
+            
+            // Extract and inject styles from within the content
+            const styles = content.querySelectorAll('style');
+            styles.forEach(styleElement => {
+                // Create a new style element and add it to the document head
+                const newStyle = document.createElement('style');
+                newStyle.textContent = styleElement.textContent;
+                document.head.appendChild(newStyle);
+                console.log('Injected style block with', styleElement.textContent.length, 'characters');
+                // Remove the style element from the content
+                styleElement.remove();
+            });
+            
+            // Now set the content without the style tags
             editorContent.value = content.innerHTML;
         } else {
             // Fallback: look for pdf-page elements directly
@@ -863,7 +877,7 @@ function showHighlightColorPicker() {
         border-radius: 8px;
         padding: 15px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        z-index: 10000;
+        z-index: 35;
     `;
     
     dialog.innerHTML = `
@@ -1368,7 +1382,7 @@ function rgbToHex(rgb) {
     border-bottom: 1px solid #ddd;
     padding: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    z-index: 100;
+    z-index: 30;
     overflow-x: auto;
     white-space: nowrap;
 }
@@ -1573,7 +1587,7 @@ function rgbToHex(rgb) {
     cursor: grabbing !important;
     opacity: 0.7 !important;
     box-shadow: 0 5px 15px rgba(0,0,0,0.3) !important;
-    z-index: 10000 !important;
+    z-index: 35 !important;
 }
 
 :deep(.selected) {
@@ -1591,7 +1605,7 @@ function rgbToHex(rgb) {
     border: 1px dashed #007bff;
     background: rgba(0, 123, 255, 0.1);
     pointer-events: none;
-    z-index: 10000;
+    z-index: 35;
 }
 
 /* Alignment Guides */
@@ -1599,7 +1613,7 @@ function rgbToHex(rgb) {
     position: absolute;
     background: #007bff;
     opacity: 0.5;
-    z-index: 10000;
+    z-index: 35;
     pointer-events: none;
 }
 
@@ -1611,7 +1625,7 @@ function rgbToHex(rgb) {
     background: #007bff;
     border: 1px solid #fff;
     border-radius: 50%;
-    z-index: 1000;
+    z-index: 32;
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
@@ -1635,7 +1649,7 @@ function rgbToHex(rgb) {
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 1001;
+    z-index: 33;
     box-shadow: 0 2px 8px rgba(0,0,0,0.25);
     transition: all 0.2s ease;
     border: 2px solid white;
@@ -1861,7 +1875,7 @@ function rgbToHex(rgb) {
     border: 1px solid #ddd;
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 1000;
+    z-index: 32;
     padding: 4px;
     min-width: 150px;
 }
@@ -2015,7 +2029,7 @@ function rgbToHex(rgb) {
     position: absolute;
     background: #ff0000;
     opacity: 0.5;
-    z-index: 10000;
+    z-index: 35;
     pointer-events: none;
 }
 
@@ -2035,7 +2049,7 @@ function rgbToHex(rgb) {
     border: 1px dashed #007bff;
     background: rgba(0, 123, 255, 0.1);
     pointer-events: none;
-    z-index: 9999;
+    z-index: 34;
 }
 
 /* Table styles */
@@ -2090,7 +2104,7 @@ function rgbToHex(rgb) {
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     padding: 20px;
-    z-index: 10000;
+    z-index: 35;
 }
 
 :deep(.pdf-table-dialog h3) {
@@ -2133,7 +2147,7 @@ function rgbToHex(rgb) {
 /* Annotation styles */
 :deep(.pdf-annotation) {
     position: absolute;
-    z-index: 100;
+    z-index: 30;
 }
 
 :deep(.annotation-marker) {
@@ -2160,7 +2174,7 @@ function rgbToHex(rgb) {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     padding: 0;
     display: none;
-    z-index: 101;
+    z-index: 31;
 }
 
 :deep(.annotation-bubble.visible) {
@@ -2240,7 +2254,7 @@ function rgbToHex(rgb) {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     padding: 15px;
-    z-index: 10000;
+    z-index: 35;
 }
 
 :deep(.highlight-color-picker h4) {
@@ -2263,7 +2277,7 @@ function rgbToHex(rgb) {
     border: 1px solid #ccc;
     border-radius: 4px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    z-index: 10000;
+    z-index: 35;
     min-width: 150px;
 }
 
@@ -2288,7 +2302,7 @@ function rgbToHex(rgb) {
     padding: 8px 16px;
     border-radius: 4px;
     font-size: 14px;
-    z-index: 9999;
+    z-index: 34;
     pointer-events: none;
 }
 

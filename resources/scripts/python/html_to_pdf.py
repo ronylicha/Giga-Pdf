@@ -39,13 +39,26 @@ def extract_page_dimensions(html):
     return 595, 842
 
 def html_to_pdf_with_content(html_path, output_path, original_pdf_path=None):
-    """Convert HTML to PDF preserving layout and images."""
+    """Convert HTML to PDF preserving layout and images with individual positioning."""
     try:
         # Read HTML content
         with open(html_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
         
         soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove page break markers before conversion
+        # These are visual markers only for the editor, not for PDF export
+        for marker in soup.find_all('div', {'class': 'pdf-page-break-marker'}):
+            marker.decompose()
+        
+        # Remove page markers that are only for visual display
+        for marker in soup.find_all('div', {'class': 'page-marker'}):
+            marker.decompose()
+        
+        # Remove any toolbar or instruction elements
+        for element in soup.find_all(['div', 'button'], {'class': ['toolbar', 'instructions', 'delete-btn', 'no-print']}):
+            element.decompose()
         
         # Get page dimensions
         page_width, page_height = extract_page_dimensions(html_content)
@@ -57,6 +70,10 @@ def html_to_pdf_with_content(html_path, output_path, original_pdf_path=None):
         page_containers = soup.find_all('div', {'class': 'pdf-page-container'})
         
         if not page_containers:
+            # Also look for alternative page containers
+            page_containers = soup.find_all('div', {'id': re.compile(r'page-container|pdf-page')})
+            
+        if not page_containers:
             # If no page containers, treat whole body as one page
             page_containers = [soup.body] if soup.body else [soup]
         
@@ -64,81 +81,163 @@ def html_to_pdf_with_content(html_path, output_path, original_pdf_path=None):
             # Create a new page with the extracted dimensions
             page = doc.new_page(width=page_width, height=page_height)
             
-            # Extract text elements
-            text_elements = page_div.find_all(class_=['pdf-text', 'pdf-element'])
-            for elem in text_elements:
-                if elem.text.strip():
-                    # Get position from style
-                    style = elem.get('style', '')
-                    left_match = re.search(r'left:\s*(\d+\.?\d*)px', style)
-                    top_match = re.search(r'top:\s*(\d+\.?\d*)px', style)
-                    
-                    if left_match and top_match:
-                        x = float(left_match.group(1)) * 72 / 96
-                        y = float(top_match.group(1)) * 72 / 96
-                        
-                        # Get font size if available
-                        font_size = 11
-                        font_match = re.search(r'font-size:\s*(\d+\.?\d*)px', style)
-                        if font_match:
-                            font_size = float(font_match.group(1)) * 72 / 96
-                        
-                        # Insert text at position
-                        try:
-                            page.insert_text(
-                                (x, y + font_size),  # Adjust y for baseline
-                                elem.text.strip(),
-                                fontsize=font_size
-                            )
-                        except:
-                            pass
+            # Process all elements in order (images first as background, then text)
+            # This ensures proper layering in the PDF
             
-            # Handle images
+            # First pass: Extract and position all images individually
+            # Look for images with various classes and tags
             images = page_div.find_all('img')
             for img in images:
                 src = img.get('src', '')
                 style = img.get('style', '')
                 
-                # Get position and size
-                left_match = re.search(r'left:\s*(\d+\.?\d*)px', style)
-                top_match = re.search(r'top:\s*(\d+\.?\d*)px', style)
-                width_match = re.search(r'width:\s*(\d+\.?\d*)px', style)
-                height_match = re.search(r'height:\s*(\d+\.?\d*)px', style)
+                # Try to get position from style attribute
+                x, y = 0, 0
+                img_width, img_height = 100, 100
                 
-                if left_match and top_match:
-                    x = float(left_match.group(1)) * 72 / 96
-                    y = float(top_match.group(1)) * 72 / 96
+                # Check for absolute positioning in style
+                if 'position' in style and 'absolute' in style:
+                    # Extract position values (support px and %)
+                    left_match = re.search(r'left:\s*(\d+\.?\d*)(px|%)', style)
+                    top_match = re.search(r'top:\s*(\d+\.?\d*)(px|%)', style)
+                    width_match = re.search(r'width:\s*(\d+\.?\d*)(px|%)', style)
+                    height_match = re.search(r'height:\s*(\d+\.?\d*)(px|%)', style)
                     
-                    img_width = float(width_match.group(1)) * 72 / 96 if width_match else 100
-                    img_height = float(height_match.group(1)) * 72 / 96 if height_match else 100
+                    if left_match:
+                        value = float(left_match.group(1))
+                        unit = left_match.group(2)
+                        x = (value * page_width / 100) if unit == '%' else (value * 72 / 96)
                     
-                    rect = fitz.Rect(x, y, x + img_width, y + img_height)
+                    if top_match:
+                        value = float(top_match.group(1))
+                        unit = top_match.group(2)
+                        y = (value * page_height / 100) if unit == '%' else (value * 72 / 96)
                     
-                    # Handle data URIs
-                    if src.startswith('data:'):
-                        try:
-                            # Extract base64 data
-                            header, data = src.split(',', 1)
-                            img_data = base64.b64decode(data)
+                    if width_match:
+                        value = float(width_match.group(1))
+                        unit = width_match.group(2)
+                        img_width = (value * page_width / 100) if unit == '%' else (value * 72 / 96)
+                    
+                    if height_match:
+                        value = float(height_match.group(1))
+                        unit = height_match.group(2)
+                        img_height = (value * page_height / 100) if unit == '%' else (value * 72 / 96)
+                else:
+                    # Try to get from data attributes or calculate from parent
+                    if img.get('data-x'):
+                        x = float(img.get('data-x', 0)) * 72 / 96
+                    if img.get('data-y'):
+                        y = float(img.get('data-y', 0)) * 72 / 96
+                    if img.get('width'):
+                        img_width = float(img.get('width', 100)) * 72 / 96
+                    if img.get('height'):
+                        img_height = float(img.get('height', 100)) * 72 / 96
+                
+                # Create rectangle for image placement
+                rect = fitz.Rect(x, y, x + img_width, y + img_height)
+                
+                # Handle different image sources
+                if src.startswith('data:'):
+                    try:
+                        # Extract MIME type and base64 data
+                        header, data = src.split(',', 1)
+                        mime_match = re.search(r'data:([^;]+)', header)
+                        mime_type = mime_match.group(1) if mime_match else 'image/png'
+                        
+                        # Determine file extension
+                        ext = '.png'
+                        if 'jpeg' in mime_type or 'jpg' in mime_type:
+                            ext = '.jpg'
+                        elif 'gif' in mime_type:
+                            ext = '.gif'
+                        elif 'bmp' in mime_type:
+                            ext = '.bmp'
+                        
+                        img_data = base64.b64decode(data)
+                        
+                        # Save to temp file with proper extension
+                        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                            tmp.write(img_data)
+                            tmp_path = tmp.name
+                        
+                        # Insert image at exact position
+                        page.insert_image(rect, filename=tmp_path)
+                        
+                        # Clean up temp file
+                        os.unlink(tmp_path)
+                    except Exception as e:
+                        print(f"Error inserting data URI image: {e}", file=sys.stderr)
+                
+                elif src and (src.startswith('http://') or src.startswith('https://')):
+                    # Handle remote images (skip for now, could download if needed)
+                    print(f"Skipping remote image: {src}", file=sys.stderr)
+                
+                elif src and os.path.exists(src):
+                    # Local file path
+                    try:
+                        page.insert_image(rect, filename=src)
+                    except Exception as e:
+                        print(f"Error inserting local image {src}: {e}", file=sys.stderr)
+            
+            # Second pass: Extract and position text elements
+            text_elements = page_div.find_all(class_=['pdf-text', 'pdf-element', 'draggable-element'])
+            
+            # Also find any element with contenteditable or position:absolute
+            for elem in page_div.find_all(True):
+                if elem.name in ['img', 'script', 'style']:
+                    continue
+                
+                style = elem.get('style', '')
+                contenteditable = elem.get('contenteditable')
+                
+                # Check if this is a text element
+                if (contenteditable == 'true' or 
+                    'position:absolute' in style or 
+                    'pdf-text' in elem.get('class', [])):
+                    
+                    text = elem.text.strip()
+                    if text:
+                        # Get position from style
+                        left_match = re.search(r'left:\s*(\d+\.?\d*)(px|%)', style)
+                        top_match = re.search(r'top:\s*(\d+\.?\d*)(px|%)', style)
+                        
+                        if left_match and top_match:
+                            left_value = float(left_match.group(1))
+                            left_unit = left_match.group(2)
+                            top_value = float(top_match.group(1))
+                            top_unit = top_match.group(2)
                             
-                            # Save to temp file
-                            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                                tmp.write(img_data)
-                                tmp_path = tmp.name
+                            x = (left_value * page_width / 100) if left_unit == '%' else (left_value * 72 / 96)
+                            y = (top_value * page_height / 100) if top_unit == '%' else (top_value * 72 / 96)
                             
-                            # Insert image
-                            page.insert_image(rect, filename=tmp_path)
+                            # Get font properties
+                            font_size = 11
+                            font_match = re.search(r'font-size:\s*(\d+\.?\d*)(px|pt)', style)
+                            if font_match:
+                                size_value = float(font_match.group(1))
+                                size_unit = font_match.group(2)
+                                font_size = size_value if size_unit == 'pt' else (size_value * 72 / 96)
                             
-                            # Clean up
-                            os.unlink(tmp_path)
-                        except Exception as e:
-                            print(f"Error inserting image: {e}", file=sys.stderr)
-                    elif os.path.exists(src):
-                        # Local file
-                        try:
-                            page.insert_image(rect, filename=src)
-                        except:
-                            pass
+                            # Get font color
+                            color = (0, 0, 0)  # Default black
+                            color_match = re.search(r'color:\s*rgb\((\d+),\s*(\d+),\s*(\d+)\)', style)
+                            if color_match:
+                                color = (
+                                    int(color_match.group(1)) / 255,
+                                    int(color_match.group(2)) / 255,
+                                    int(color_match.group(3)) / 255
+                                )
+                            
+                            # Insert text at exact position
+                            try:
+                                page.insert_text(
+                                    (x, y + font_size),  # Adjust y for baseline
+                                    text,
+                                    fontsize=font_size,
+                                    color=color
+                                )
+                            except Exception as e:
+                                print(f"Error inserting text: {e}", file=sys.stderr)
         
         # If we have an original PDF and no pages were created, copy from original
         if len(doc) == 0 and original_pdf_path and os.path.exists(original_pdf_path):
